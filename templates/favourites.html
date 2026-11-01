@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_macros.html" import options, cover %}
+{% block title %}My favourites{% endblock %}
+{% block content %}
+<h1 class="h3">My favourites</h1>
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-6"><input class="form-control" name="q" value="{{ args.q }}" placeholder="Search my favourites"></div>
+  <div class="col-md-4"><select class="form-select" name="category">{{ options(categories, args.category, "Any category") }}</select></div>
+  <div class="col-md-2"><button class="btn btn-outline-primary w-100">Search</button></div>
+</form>
+{% if not items %}<p>{% if args.q or args.category %}No saved projects match.{% else %}You haven't saved any projects yet.{% endif %}</p>{% endif %}
+<ul class="list-group">
+  {% for idp in items %}
+  <li class="list-group-item d-flex justify-content-between align-items-center">
+    <span><a href="{{ url_for('idp.detail', idp_id=idp.id) }}">{{ idp.title }}</a> · {{ idp.category }} · ${{ idp.budget }}</span>
+    <form method="post" action="{{ url_for('favourite.remove', idp_id=idp.id) }}"><button class="btn btn-sm btn-outline-danger">Remove</button></form>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

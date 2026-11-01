@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_macros.html" import options %}
+{% block title %}Analytics by segment{% endblock %}
+{% block content %}
+<h1 class="h3">Analytics by category or status</h1>
+{% include "analytics/_nav.html" %}
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-5"><select class="form-select" name="category">{{ options(categories, args.category, "All categories") }}</select></div>
+  <div class="col-md-5"><select class="form-select" name="status">{{ options(['Current', 'Past', 'Published', 'Draft'], args.status, "Any status") }}</select></div>
+  <div class="col-md-2"><button class="btn btn-outline-primary w-100">Filter</button></div>
+</form>
+<p>{{ data.projects }} projects · {{ data.views }} views · {{ data.shortlists }} shortlists · save rate {{ data.save_rate }}%</p>
+<table class="table bg-white">
+  <thead><tr><th>Project</th><th>Category</th><th>Status</th><th class="text-end">Views</th><th class="text-end">Shortlists</th></tr></thead>
+  {% for row in data.rows %}<tr><td>{{ row.idp.title }}</td><td>{{ row.idp.category }}</td><td>{{ row.idp.status }}</td><td class="text-end">{{ row.views }}</td><td class="text-end">{{ row.shortlists }}</td></tr>
+  {% else %}<tr><td colspan="5">No projects in this segment.</td></tr>{% endfor %}
+</table>
+{% endblock %}

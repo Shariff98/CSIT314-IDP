@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Compare projects{% endblock %}
+{% block content %}
+<h1 class="h3">Compare project performance</h1>
+{% include "analytics/_nav.html" %}
+<form method="get" class="mb-3">
+  <p class="small text-muted mb-1">Choose 2 to 4 projects (hold Ctrl or Cmd to select several).</p>
+  <select class="form-select mb-2" name="idp" multiple size="8">
+    {% for idp in idps %}<option value="{{ idp.id }}" {% if idp.id|string in chosen %}selected{% endif %}>{{ idp.title }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-outline-primary">Compare</button>
+</form>
+{% if result %}
+<table class="table bg-white">
+  <thead><tr><th>Project</th><th class="text-end">Views</th><th class="text-end">Shortlists</th><th class="text-end">Save rate</th><th class="text-end">Views, last 30 days</th></tr></thead>
+  {% for row in result.rows %}<tr {% if row.idp.id == result.best.id %}class="table-success"{% endif %}><td>{{ row.idp.title }}</td>
+    <td class="text-end">{{ row.views }}</td><td class="text-end">{{ row.shortlists }}</td><td class="text-end">{{ row.save_rate }}%</td><td class="text-end">{{ row.views_30_days }}</td></tr>{% endfor %}
+</table>
+<p>Best save rate: <strong>{{ result.best.title }}</strong></p>
+{% endif %}
+{% endblock %}

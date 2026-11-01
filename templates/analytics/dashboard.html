@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block content %}
+<h1 class="h3">Portfolio analytics</h1>
+{% include "analytics/_nav.html" %}
+<div class="row g-3 mb-4">
+  {% for label, value in [('Projects', summary.projects), ('Published', summary.published), ('Drafts', summary.drafts),
+     ('Total views', summary.views), ('Total shortlists', summary.shortlists), ('Save rate', summary.save_rate|string + '%'),
+     ('Views, last 30 days', summary.views_30_days), ('Shortlists, last 30 days', summary.shortlists_30_days)] %}
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body"><div class="text-muted small">{{ label }}</div><div class="stat">{{ value }}</div></div></div></div>
+  {% endfor %}
+</div>
+{% if summary.top_project %}<p>Best performing project: <a href="{{ url_for('portfolio.my_idp', idp_id=summary.top_project.id) }}">{{ summary.top_project.title }}</a></p>{% endif %}
+{% endblock %}

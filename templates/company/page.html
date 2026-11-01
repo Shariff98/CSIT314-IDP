@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import idp_card %}
+{% block title %}{{ company.name }}{% endblock %}
+{% block content %}
+{% if preview %}<div class="alert alert-warning">Preview: this is how customers see your company page.
+  <a href="{{ url_for('company.edit') }}">Back to editing</a></div>{% endif %}
+{% if company.cover_file %}<img src="{{ url_for('idp.uploaded', filename=company.cover_file) }}" class="w-100 rounded mb-3" style="max-height: 260px; object-fit: cover" alt="cover">{% endif %}
+<div class="d-flex align-items-center mb-3">
+  {% if company.logo_file %}<img src="{{ url_for('idp.uploaded', filename=company.logo_file) }}" class="rounded me-3" style="height: 64px" alt="logo">{% endif %}
+  <div><h1 class="h3 mb-0">{{ company.name }}</h1>
+  <div class="text-muted">by {{ designer.name }} · {{ company.years_experience }} years of experience</div></div>
+</div>
+<div class="row g-4 mb-4">
+  <div class="col-md-8"><p>{{ company.description }}</p>
+    {% for s in company.specialisation_list %}<span class="badge text-bg-primary">{{ s }}</span> {% endfor %}
+    {% if company.service_list %}<h2 class="h6 mt-3">Services</h2><p>{{ company.service_list|join(', ') }}</p>{% endif %}
+    {% if company.certifications or company.awards %}<h2 class="h6">Credentials</h2>
+      <p class="mb-0">{{ company.certifications }}</p><p>{{ company.awards }}</p>{% endif %}
+  </div>
+  <div class="col-md-4"><div class="card"><div class="card-body small">
+    <div><strong>Address:</strong> {{ company.address }}</div>
+    <div><strong>Phone:</strong> {{ company.phone or '—' }}</div>
+    <div><strong>Email:</strong> {{ company.email }}</div>
+    <div><strong>Service areas:</strong> {{ company.service_area_list|join(', ') or '—' }}</div>
+    {% if company.budget_min %}<div><strong>Typical budget:</strong> ${{ "{:,}".format(company.budget_min) }} – ${{ "{:,}".format(company.budget_max) }}</div>{% endif %}
+    {% if team %}<div class="mt-2"><strong>Team:</strong><ul class="mb-0">{% for m in team %}<li>{{ m.name }}, {{ m.position }}</li>{% endfor %}</ul></div>{% endif %}
+  </div></div></div>
+</div>
+<h2 class="h5">Projects ({{ projects|length }})</h2>
+<div class="row">{% for idp in projects %}{{ idp_card(idp) }}{% else %}<p class="text-muted">No published projects yet.</p>{% endfor %}</div>
+{% endblock %}

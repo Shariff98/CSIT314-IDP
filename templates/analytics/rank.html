@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Ranking{% endblock %}
+{% block content %}
+<h1 class="h3">Rank my projects</h1>
+{% include "analytics/_nav.html" %}
+<div class="btn-group mb-3">
+  <a class="btn btn-sm {{ 'btn-primary' if metric == 'views' else 'btn-outline-primary' }}" href="?by=views">By views</a>
+  <a class="btn btn-sm {{ 'btn-primary' if metric == 'shortlists' else 'btn-outline-primary' }}" href="?by=shortlists">By shortlists</a>
+</div>
+<table class="table bg-white">
+  <thead><tr><th>#</th><th>Project</th><th class="text-end">Views</th><th class="text-end">Shortlists</th></tr></thead>
+  {% for row in rows %}<tr><td>{{ row.rank }}</td><td><a href="{{ url_for('portfolio.my_idp', idp_id=row.idp.id) }}">{{ row.idp.title }}</a></td>
+    <td class="text-end">{{ row.views }}</td><td class="text-end">{{ row.shortlists }}</td></tr>
+  {% else %}<tr><td colspan="4">No projects yet.</td></tr>{% endfor %}
+</table>
+{% endblock %}

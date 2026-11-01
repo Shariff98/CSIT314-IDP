@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "_macros.html" import options %}
+{% block content %}
+<h1 class="h3">{{ 'Edit account' if account else 'Create user account' }}</h1>
+<form method="post" class="col-md-6">
+  <label class="form-label">Name</label><input class="form-control mb-2" name="name" value="{{ form.name }}" required>
+  <label class="form-label">Email</label><input class="form-control mb-2" name="email" type="email" value="{{ form.email }}" required>
+  {% if not account %}<label class="form-label">Password</label><input class="form-control mb-2" name="password" type="password" minlength="8" required>{% endif %}
+  <label class="form-label">User profile</label>
+  <select class="form-select mb-3" name="role" required>{{ options(roles, form.role, "Choose…") }}</select>
+  <button class="btn btn-primary">Save</button>
+  <a class="btn btn-link" href="{{ url_for('account.list_accounts') }}">Cancel</a>
+</form>
+{% endblock %}

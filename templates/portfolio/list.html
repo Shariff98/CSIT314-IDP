@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import options %}
+{% block title %}My projects{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">My projects</h1>
+  <a class="btn btn-primary" href="{{ url_for('idp.create') }}">New project</a>
+</div>
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-3"><input class="form-control" name="q" value="{{ args.q }}" placeholder="Search my projects"></div>
+  <div class="col-md-2"><select class="form-select" name="status">{{ options(statuses, args.status, "Any status") }}</select></div>
+  <div class="col-md-2"><select class="form-select" name="category">{{ options(categories, args.category, "Any category") }}</select></div>
+  <div class="col-md-2"><input class="form-control" type="date" name="date_from" value="{{ args.date_from }}" title="Created from"></div>
+  <div class="col-md-2"><input class="form-control" type="date" name="date_to" value="{{ args.date_to }}" title="Created to"></div>
+  <div class="col-md-1"><button class="btn btn-outline-primary w-100">Go</button></div>
+</form>
+<p class="text-muted small">{{ idps|length }} projects</p>
+<div class="table-responsive"><table class="table table-hover bg-white">
+  <thead><tr><th>Title</th><th>Category</th><th>Status</th><th>Visibility</th><th>Created</th><th class="text-end">Views</th><th class="text-end">Shortlists</th></tr></thead>
+  {% for idp in idps %}
+  <tr><td><a href="{{ url_for('portfolio.my_idp', idp_id=idp.id) }}">{{ idp.title }}</a></td><td>{{ idp.category }}</td>
+    <td>{{ idp.status }}</td><td>{% if idp.is_published %}<span class="badge text-bg-success">Published</span>{% else %}<span class="badge text-bg-secondary">Draft</span>{% endif %}</td>
+    <td class="small">{{ idp.created_at[:10] }}</td><td class="text-end">{{ idp.views }}</td><td class="text-end">{{ idp.shortlist_count() }}</td></tr>
+  {% else %}<tr><td colspan="7">No projects found.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

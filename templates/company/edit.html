@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Edit company{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Edit company information</h1>
+  <a class="btn btn-outline-secondary" href="{{ url_for('company.preview') }}">Preview public page</a>
+</div>
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card mb-4"><div class="card-body"><h2 class="h5">Company details</h2>
+      <form method="post" action="{{ url_for('company.edit') }}">{% include "company/_info_fields.html" %}
+      <button class="btn btn-primary mt-3">Save details</button></form></div></div>
+
+    <div class="card mb-4"><div class="card-body"><h2 class="h5">Specialisations and service areas</h2>
+      <form method="post" action="{{ url_for('company.specialisations') }}">
+        <label class="form-label">Specialisations (comma separated)</label>
+        <input class="form-control mb-2" name="specialisations" value="{{ company.specialisations }}" placeholder="Modern, Minimalist, Scandinavian">
+        <label class="form-label">Service areas</label>
+        <input class="form-control mb-2" name="service_areas" value="{{ company.service_areas }}" placeholder="Central, East, West">
+        <button class="btn btn-primary">Save</button></form></div></div>
+
+    <div class="card mb-4"><div class="card-body"><h2 class="h5">Budget range and services</h2>
+      <form method="post" action="{{ url_for('company.services') }}" class="row g-2">
+        <div class="col-md-6"><label class="form-label">Minimum budget ($)</label><input class="form-control" type="number" min="1" name="budget_min" value="{{ company.budget_min or '' }}"></div>
+        <div class="col-md-6"><label class="form-label">Maximum budget ($)</label><input class="form-control" type="number" min="1" name="budget_max" value="{{ company.budget_max or '' }}"></div>
+        <div class="col-12"><label class="form-label">Services offered</label><input class="form-control" name="services" value="{{ company.services }}" placeholder="Full renovation, Space planning, Carpentry"></div>
+        <div class="col-12"><button class="btn btn-primary">Save</button></div></form></div></div>
+
+    <div class="card mb-4"><div class="card-body"><h2 class="h5">Certifications, awards and experience</h2>
+      <form method="post" action="{{ url_for('company.credentials') }}">
+        <label class="form-label">Certifications</label><input class="form-control mb-2" name="certifications" value="{{ company.certifications }}">
+        <label class="form-label">Awards</label><input class="form-control mb-2" name="awards" value="{{ company.awards }}">
+        <label class="form-label">Years of experience</label><input class="form-control mb-2" type="number" min="0" max="80" name="years_experience" value="{{ company.years_experience }}">
+        <button class="btn btn-primary">Save</button></form></div></div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card mb-4"><div class="card-body"><h2 class="h5">Logo and cover image</h2>
+      {% if company.logo_file %}<img src="{{ url_for('idp.uploaded', filename=company.logo_file) }}" class="img-thumbnail mb-2" style="max-height: 80px" alt="logo">{% endif %}
+      {% if company.cover_file %}<img src="{{ url_for('idp.uploaded', filename=company.cover_file) }}" class="img-fluid rounded mb-2" alt="cover">{% endif %}
+      <form method="post" action="{{ url_for('company.upload_image') }}" enctype="multipart/form-data">
+        <select class="form-select mb-2" name="kind"><option value="logo">Logo</option><option value="cover">Cover image</option></select>
+        <input class="form-control mb-2" type="file" name="image" accept="image/*" required>
+        <button class="btn btn-primary">Upload</button></form></div></div>
+
+    <div class="card"><div class="card-body"><h2 class="h5">Team members</h2>
+      <ul class="list-group mb-3">
+      {% for m in company.team_members() %}
+        <li class="list-group-item d-flex justify-content-between">{{ m.name }} · <span class="text-muted">{{ m.position }}</span>
+          <form method="post" action="{{ url_for('company.remove_team_member', member_id=m.id) }}"><button class="btn btn-sm btn-link text-danger p-0">Remove</button></form></li>
+      {% else %}<li class="list-group-item text-muted">No team members yet.</li>{% endfor %}
+      </ul>
+      <form method="post" action="{{ url_for('company.add_team_member') }}" class="row g-2">
+        <div class="col-6"><input class="form-control" name="name" placeholder="Name" required></div>
+        <div class="col-6"><input class="form-control" name="position" placeholder="Position" required></div>
+        <div class="col-12"><button class="btn btn-outline-primary">Add member</button></div></form></div></div>
+  </div>
+</div>
+{% endblock %}

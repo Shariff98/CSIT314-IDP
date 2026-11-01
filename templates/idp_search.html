@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import options, idp_card %}
+{% block title %}Browse projects{% endblock %}
+{% block content %}
+<form method="get" class="card card-body mb-3 shadow-sm">
+  <div class="d-flex mb-2">
+    <input class="form-control me-2" name="q" value="{{ keyword }}" placeholder="Search projects, e.g. kitchen">
+    <button class="btn btn-primary">Search</button>
+  </div>
+  <div class="row g-2">
+    <div class="col-6 col-md-2"><select class="form-select form-select-sm" name="category">{{ options(categories, args.category, "Any category") }}</select></div>
+    <div class="col-6 col-md-2"><select class="form-select form-select-sm" name="style">{{ options(styles, args.style, "Any style") }}</select></div>
+    <div class="col-6 col-md-2"><select class="form-select form-select-sm" name="property_type">{{ options(property_types, args.property_type, "Any property") }}</select></div>
+    <div class="col-6 col-md-2"><input class="form-control form-control-sm" name="location" value="{{ args.location }}" placeholder="Location"></div>
+    <div class="col-6 col-md-1"><input class="form-control form-control-sm" name="min_budget" type="number" min="0" value="{{ args.min_budget }}" placeholder="Min $"></div>
+    <div class="col-6 col-md-1"><input class="form-control form-control-sm" name="max_budget" type="number" min="0" value="{{ args.max_budget }}" placeholder="Max $"></div>
+    <div class="col-12 col-md-2"><select class="form-select form-select-sm" name="sort">
+      {% for key, label in sort_options.items() %}<option value="{{ key }}" {% if args.sort == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+  </div>
+</form>
+<p class="text-muted small">{{ total }} projects found{% if pages > 1 %} · page {{ page }} of {{ pages }}{% endif %}</p>
+{% if not results %}<p>No results.</p>{% endif %}
+<div class="row">{% for idp in results %}{{ idp_card(idp) }}{% endfor %}</div>
+{% if pages > 1 %}
+<nav><ul class="pagination">
+  {% set query = args.to_dict() %}
+  {% if page > 1 %}{% set _ = query.update({'page': page - 1}) %}<li class="page-item"><a class="page-link" href="?{{ query|urlencode }}">Previous</a></li>{% endif %}
+  {% if page < pages %}{% set _ = query.update({'page': page + 1}) %}<li class="page-item"><a class="page-link" href="?{{ query|urlencode }}">Next</a></li>{% endif %}
+</ul></nav>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Trends{% endblock %}
+{% block content %}
+<h1 class="h3">Views and shortlists over time</h1>
+{% include "analytics/_nav.html" %}
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-3"><select class="form-select" name="period">
+    {% for p in ['daily', 'weekly', 'monthly'] %}<option value="{{ p }}" {% if data.period == p %}selected{% endif %}>{{ p|capitalize }}</option>{% endfor %}</select></div>
+  <div class="col-md-3"><input class="form-control" type="date" name="start" value="{{ data.start }}"></div>
+  <div class="col-md-3"><input class="form-control" type="date" name="end" value="{{ data.end }}"></div>
+  <div class="col-md-3"><button class="btn btn-outline-primary w-100">Show</button></div>
+</form>
+<p>{{ data.start }} to {{ data.end }}: <strong>{{ data.total_views }}</strong> views, <strong>{{ data.total_shortlists }}</strong> shortlists.</p>
+<table class="table table-sm bg-white">
+  <thead><tr><th style="width: 18%">{{ {'daily': 'Day', 'weekly': 'Week starting', 'monthly': 'Month'}[data.period] }}</th><th class="text-end" style="width: 10%">Views</th><th class="text-end" style="width: 10%">Shortlists</th><th></th></tr></thead>
+  {% for row in data.rows %}<tr><td>{{ row.label }}</td><td class="text-end">{{ row.views }}</td><td class="text-end">{{ row.shortlists }}</td>
+    <td><div class="bar" style="width: {{ (100 * row.views / peak)|round }}%"></div></td></tr>{% endfor %}
+</table>
+{% endblock %}

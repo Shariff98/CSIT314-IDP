@@ -1,0 +1,23 @@
+{% macro options(items, selected, blank=None) -%}
+  {% if blank is not none %}<option value="">{{ blank }}</option>{% endif %}
+  {% for item in items %}<option {% if item == selected %}selected{% endif %}>{{ item }}</option>{% endfor %}
+{%- endmacro %}
+
+{% macro cover(idp, height=180) -%}
+  {% set photo = idp.cover_photo() %}
+  {% if photo %}<img class="card-img-top cover" style="height: {{ height }}px" src="{{ url_for('idp.uploaded', filename=photo.filename) }}" alt="{{ idp.title }}">
+  {% else %}<div class="card-img-top cover d-flex align-items-center justify-content-center text-muted" style="height: {{ height }}px">No photo yet</div>{% endif %}
+{%- endmacro %}
+
+{% macro idp_card(idp) -%}
+  <div class="col-sm-6 col-lg-4 mb-3"><div class="card h-100 shadow-sm">
+    {{ cover(idp) }}
+    <div class="card-body">
+      <h2 class="h6 mb-1"><a href="{{ url_for('idp.detail', idp_id=idp.id) }}">{{ idp.title }}</a></h2>
+      <p class="text-muted small mb-1">{{ idp.category }}{% if idp.property_type %} · {{ idp.property_type }}{% endif %}{% if idp.location %} · {{ idp.location }}{% endif %}</p>
+      <p class="small mb-1">${{ "{:,}".format(idp.budget) }}</p>
+      {% for tag in idp.style_tag_list %}<span class="badge text-bg-light border">{{ tag }}</span> {% endfor %}
+    </div>
+    <div class="card-footer small text-muted">{{ idp.views }} views · {{ idp.shortlist_count() }} saves</div>
+  </div></div>
+{%- endmacro %}

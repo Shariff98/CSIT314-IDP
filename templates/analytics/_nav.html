@@ -1,0 +1,7 @@
+<ul class="nav nav-pills mb-3 small">
+  {% for endpoint, label in [('analytics.dashboard', 'Dashboard'), ('analytics.views', 'Views'), ('analytics.shortlists', 'Shortlists'),
+     ('analytics.rank', 'Ranking'), ('analytics.trend', 'Trends'), ('analytics.segment', 'By category / status'),
+     ('analytics.compare', 'Compare'), ('analytics.export_csv', 'Export CSV')] %}
+  <li class="nav-item"><a class="nav-link {% if request.endpoint == endpoint %}active{% endif %}" href="{{ url_for(endpoint) }}">{{ label }}</a></li>
+  {% endfor %}
+</ul>

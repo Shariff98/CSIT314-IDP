@@ -1,0 +1,38 @@
+# CI: every push and pull request installs the app, runs the unit tests with a coverage
+# report, and checks that the test data generator still works.
+# CD: when main is green, the deploy job asks Render to deploy (see README section 8).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Unit tests
+        run: pytest -v --cov=control --cov=entity --cov=boundary --cov-report=term-missing
+      - name: Test data generator
+        run: python scripts/generate_data.py --size 20
+        env:
+          DB_PATH: ci-demo.db
+          UPLOAD_DIR: ci-uploads
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+    steps:
+      - name: Trigger Render deploy
+        if: ${{ env.RENDER_DEPLOY_HOOK != '' }}
+        run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK"

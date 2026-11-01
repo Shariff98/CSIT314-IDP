@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Sign up{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-md-6 col-lg-5">
+<div class="card shadow-sm"><div class="card-body">
+<h1 class="h4 mb-3">Create a customer account</h1>
+<form method="post">
+  <input class="form-control mb-2" name="name" placeholder="Full name" value="{{ form.name }}" required>
+  <input class="form-control mb-2" name="email" type="email" placeholder="Email" value="{{ form.email }}" required>
+  <input class="form-control mb-2" name="password" type="password" placeholder="Password (8+ characters)" minlength="8" required>
+  <input class="form-control mb-3" name="confirm_password" type="password" placeholder="Confirm password" required>
+  <button class="btn btn-primary w-100">Sign up</button>
+</form>
+<p class="small text-muted mt-3 mb-0">Interior designers are set up by the User Admin.</p>
+</div></div></div></div>
+{% endblock %}

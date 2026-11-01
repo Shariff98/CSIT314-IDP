@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3">{{ 'Edit category' if category else 'Create IDP category' }}</h1>
+<form method="post" class="col-md-6">
+  <label class="form-label">Name</label><input class="form-control mb-2" name="name" value="{{ form.name }}" maxlength="40" required>
+  <label class="form-label">Description</label><textarea class="form-control mb-3" name="description" rows="3">{{ form.description }}</textarea>
+  {% if category %}<p class="small text-muted">Renaming moves its {{ category.idp_count() }} projects to the new name.</p>{% endif %}
+  <button class="btn btn-primary">Save</button>
+  <a class="btn btn-link" href="{{ url_for('platform.categories') }}">Cancel</a>
+</form>
+{% endblock %}

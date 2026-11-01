@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import idp_card %}
+{% block title %}{{ idp.title }}{% endblock %}
+{% block content %}
+{% set company = idp.company() %}
+{% set photos = idp.photos() %}
+<div class="row g-4">
+  <div class="col-lg-8">
+    {% if photos %}
+    <div id="photos" class="carousel slide mb-3"><div class="carousel-inner rounded">
+      {% for p in photos %}<div class="carousel-item {% if loop.first %}active{% endif %}">
+        <img src="{{ url_for('idp.uploaded', filename=p.filename) }}" class="d-block w-100" style="max-height: 420px; object-fit: cover" alt="photo {{ loop.index }}"></div>{% endfor %}
+    </div>
+    {% if photos|length > 1 %}<button class="carousel-control-prev" type="button" data-bs-target="#photos" data-bs-slide="prev"><span class="carousel-control-prev-icon"></span></button>
+    <button class="carousel-control-next" type="button" data-bs-target="#photos" data-bs-slide="next"><span class="carousel-control-next-icon"></span></button>{% endif %}
+    </div>
+    {% endif %}
+    <h1 class="h3">{{ idp.title }}</h1>
+    <p class="text-muted">{{ idp.category }} · Budget ${{ idp.budget }} · {{ idp.status }} · {{ idp.views }} views · {{ idp.shortlist_count() }} shortlisted</p>
+    {% for tag in idp.style_tag_list %}<span class="badge text-bg-light border">{{ tag }}</span> {% endfor %}
+    <p class="mt-3">{{ idp.description }}</p>
+    <dl class="row small">
+      <dt class="col-sm-3">Property type</dt><dd class="col-sm-9">{{ idp.property_type or '—' }}</dd>
+      <dt class="col-sm-3">Location</dt><dd class="col-sm-9">{{ idp.location or '—' }}</dd>
+      <dt class="col-sm-3">Completed</dt><dd class="col-sm-9">{{ idp.completion_date or 'In progress' }}</dd>
+    </dl>
+    {% if session.role == 'Customer' %}
+      {% if saved %}
+      <form method="post" action="{{ url_for('favourite.remove', idp_id=idp.id) }}">
+        <input type="hidden" name="next" value="{{ url_for('idp.detail', idp_id=idp.id) }}">
+        <button class="btn btn-outline-danger">Remove from favourites</button></form>
+      {% else %}
+      <form method="post" action="{{ url_for('favourite.save', idp_id=idp.id) }}"><button class="btn btn-success">Save to favourites</button></form>
+      {% endif %}
+    {% elif not session.user_id %}
+      <a class="btn btn-outline-success" href="{{ url_for('auth.login') }}">Log in to save this project</a>
+    {% endif %}
+  </div>
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <h2 class="h6">Designer</h2>
+      {% if company %}<a class="fw-semibold" href="{{ url_for('company.public_page', designer_id=idp.designer_id) }}">{{ company.name }}</a>
+        <div class="small text-muted">{{ company.specialisations }}</div>
+        <div class="small">{{ company.phone }} · {{ company.email }}</div>
+      {% else %}{{ idp.designer().name }}{% endif %}
+    </div></div>
+  </div>
+</div>
+{% if others %}
+<h2 class="h5 mt-4">More projects by this designer</h2>
+<div class="row">{% for other in others %}{{ idp_card(other) }}{% endfor %}</div>
+{% endif %}
+{% endblock %}

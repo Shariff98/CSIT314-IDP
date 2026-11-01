@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ report.period }} report{% endblock %}
+{% block content %}
+<ul class="nav nav-tabs mb-3 no-print">
+  {% for p in ['daily', 'weekly', 'monthly'] %}<li class="nav-item"><a class="nav-link {% if p == period %}active{% endif %}" href="{{ url_for('platform.report', period=p) }}">{{ p|capitalize }}</a></li>{% endfor %}
+</ul>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">{{ report.period }} report: {{ report.start }}{% if report.end != report.start %} to {{ report.end }}{% endif %}</h1>
+  <div class="no-print">
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('platform.export_report', period=period, date=report.start, format='csv') }}">Export CSV</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('platform.export_report', period=period, date=report.start, format='pdf') }}">Export PDF</a>
+  </div>
+</div>
+<form class="d-flex gap-2 mb-3" method="get"><input class="form-control w-auto" type="date" name="date" value="{{ report.start }}"><button class="btn btn-outline-primary">Show period containing this date</button></form>
+<table class="table bg-white w-auto">
+  <thead><tr><th>Metric</th><th class="text-end">This period</th><th class="text-end">Previous period</th><th class="text-end">Change</th></tr></thead>
+  {% for name, value in report.metrics.items() %}<tr><td>{{ name }}</td><td class="text-end">{{ value }}</td><td class="text-end">{{ report.previous.metrics[name] }}</td>
+    <td class="text-end {{ 'text-success' if report.changes[name] > 0 else ('text-danger' if report.changes[name] < 0 else '') }}">{{ '%+d'|format(report.changes[name]) }}</td></tr>{% endfor %}
+</table>
+<div class="row g-4">
+  <div class="col-md-6"><h2 class="h6">Top categories by views</h2><ol>{% for c in report.top_categories %}<li>{{ c.name }} ({{ c.views }})</li>{% else %}<li class="text-muted">No views in this period</li>{% endfor %}</ol></div>
+  <div class="col-md-6"><h2 class="h6">Top IDPs by views</h2><ol>{% for p in report.top_idps %}<li>{{ p.title }} ({{ p.views }})</li>{% else %}<li class="text-muted">No views in this period</li>{% endfor %}</ol></div>
+</div>
+{% endblock %}

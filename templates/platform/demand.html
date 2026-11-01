@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Customer demand{% endblock %}
+{% block content %}
+<h1 class="h3">Top categories and projects</h1>
+<div class="row g-4">
+  <div class="col-lg-4"><h2 class="h6">Top categories</h2><table class="table table-sm bg-white">
+    <thead><tr><th>Category</th><th class="text-end">IDPs</th><th class="text-end">Views</th><th class="text-end">Saves</th></tr></thead>
+    {% for c in data.categories %}<tr><td>{{ c.name }}</td><td class="text-end">{{ c.idps }}</td><td class="text-end">{{ c.views }}</td><td class="text-end">{{ c.saves }}</td></tr>{% endfor %}</table></div>
+  <div class="col-lg-4"><h2 class="h6">Most viewed IDPs</h2><table class="table table-sm bg-white">
+    {% for p in data.most_viewed %}<tr><td><a href="{{ url_for('idp.detail', idp_id=p.id) }}">{{ p.title }}</a></td><td class="text-end">{{ p.views }}</td></tr>{% endfor %}</table></div>
+  <div class="col-lg-4"><h2 class="h6">Most shortlisted IDPs</h2><table class="table table-sm bg-white">
+    {% for p in data.most_shortlisted %}<tr><td><a href="{{ url_for('idp.detail', idp_id=p.id) }}">{{ p.title }}</a></td><td class="text-end">{{ p.saves }}</td></tr>{% endfor %}</table></div>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import options %}
+{% block title %}Categories{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">IDP categories</h1>
+  <a class="btn btn-primary" href="{{ url_for('platform.create_category') }}">Create category</a>
+</div>
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-7"><input class="form-control" name="q" value="{{ args.q }}" placeholder="Search categories"></div>
+  <div class="col-md-3"><select class="form-select" name="status">{{ options(["Active", "Suspended"], args.status, "Any status") }}</select></div>
+  <div class="col-md-2"><button class="btn btn-outline-primary w-100">Search</button></div>
+</form>
+<div class="table-responsive"><table class="table bg-white align-middle">
+  <thead><tr><th>Name</th><th>Description</th><th class="text-end">IDPs</th><th>Status</th><th>Actions</th></tr></thead>
+  {% for row in rows %}{% set c = row.category %}
+  <tr><td>{{ c.name }}</td><td class="small">{{ c.description }}</td><td class="text-end">{{ row.idps }}</td>
+    <td><span class="badge {{ 'text-bg-success' if c.status == 'Active' else 'text-bg-secondary' }}">{{ c.status }}</span></td>
+    <td>
+      <a class="btn btn-sm btn-outline-secondary mb-1" href="{{ url_for('platform.edit_category', category_id=c.id) }}">Edit</a>
+      {% if c.status == 'Suspended' %}
+      <form class="d-inline" method="post" action="{{ url_for('platform.change_category', category_id=c.id, action='reactivate') }}"><button class="btn btn-sm btn-outline-success mb-1">Reactivate</button></form>
+      {% endif %}
+      <form class="d-inline-flex gap-1" method="post">
+        {% if row.idps %}<select class="form-select form-select-sm w-auto" name="reassign_to" required>{{ options(active|reject('equalto', c.name)|list, None, "Move IDPs to…") }}</select>{% endif %}
+        {% if c.status == 'Active' %}<button class="btn btn-sm btn-outline-warning" formaction="{{ url_for('platform.change_category', category_id=c.id, action='suspend') }}">Suspend</button>{% endif %}
+        <button class="btn btn-sm btn-outline-danger" formaction="{{ url_for('platform.change_category', category_id=c.id, action='delete') }}" onclick="return confirm('Delete this category?');">Delete</button>
+      </form>
+    </td></tr>
+  {% else %}<tr><td colspan="5">No categories match.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

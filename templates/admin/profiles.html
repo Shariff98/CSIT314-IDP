@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import options %}
+{% block title %}User profiles{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">User profiles</h1>
+  <a class="btn btn-primary" href="{{ url_for('account.create_profile') }}">Create profile</a>
+</div>
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-7"><input class="form-control" name="q" value="{{ args.q }}" placeholder="Search profiles"></div>
+  <div class="col-md-3"><select class="form-select" name="status">{{ options(["Active", "Suspended"], args.status, "Any status") }}</select></div>
+  <div class="col-md-2"><button class="btn btn-outline-primary w-100">Search</button></div>
+</form>
+<table class="table bg-white">
+  <thead><tr><th>Profile</th><th>Description</th><th>Accounts</th><th>Status</th><th></th></tr></thead>
+  {% for p in profiles %}
+  <tr><td>{{ p.name }}</td><td>{{ p.description }}</td><td>{{ p.account_count() }}</td>
+    <td><span class="badge {{ 'text-bg-success' if p.status == 'Active' else 'text-bg-secondary' }}">{{ p.status }}</span></td>
+    <td class="text-end text-nowrap">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('account.edit_profile', profile_id=p.id) }}">Edit</a>
+      <form class="d-inline" method="post" action="{{ url_for('account.change_profile_status', profile_id=p.id, action='suspend' if p.status == 'Active' else 'reactivate') }}">
+        <button class="btn btn-sm {{ 'btn-outline-danger' if p.status == 'Active' else 'btn-outline-success' }}">{{ 'Suspend' if p.status == 'Active' else 'Reactivate' }}</button></form>
+    </td></tr>
+  {% else %}<tr><td colspan="5">No profiles match.</td></tr>{% endfor %}
+</table>
+{% endblock %}

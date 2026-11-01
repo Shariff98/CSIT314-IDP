@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}My company{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">{{ company.name }}</h1>
+  <div><a class="btn btn-outline-secondary" href="{{ url_for('company.preview') }}">Preview public page</a>
+  <a class="btn btn-primary" href="{{ url_for('company.edit') }}">Edit</a></div>
+</div>
+<div class="card"><div class="card-body"><dl class="row mb-0">
+  <dt class="col-sm-3">Registration no.</dt><dd class="col-sm-9">{{ company.registration_no }}</dd>
+  <dt class="col-sm-3">Address</dt><dd class="col-sm-9">{{ company.address }}</dd>
+  <dt class="col-sm-3">Phone</dt><dd class="col-sm-9">{{ company.phone or '—' }}</dd>
+  <dt class="col-sm-3">Email</dt><dd class="col-sm-9">{{ company.email }}</dd>
+  <dt class="col-sm-3">About</dt><dd class="col-sm-9">{{ company.description or '—' }}</dd>
+  <dt class="col-sm-3">Specialisations</dt><dd class="col-sm-9">{{ company.specialisations or '—' }}</dd>
+  <dt class="col-sm-3">Service areas</dt><dd class="col-sm-9">{{ company.service_areas or '—' }}</dd>
+  <dt class="col-sm-3">Services</dt><dd class="col-sm-9">{{ company.services or '—' }}</dd>
+  <dt class="col-sm-3">Budget range</dt><dd class="col-sm-9">{% if company.budget_min %}${{ "{:,}".format(company.budget_min) }} – ${{ "{:,}".format(company.budget_max) }}{% else %}—{% endif %}</dd>
+  <dt class="col-sm-3">Experience</dt><dd class="col-sm-9">{{ company.years_experience }} years</dd>
+  <dt class="col-sm-3">Certifications</dt><dd class="col-sm-9">{{ company.certifications or '—' }}</dd>
+  <dt class="col-sm-3">Awards</dt><dd class="col-sm-9">{{ company.awards or '—' }}</dd>
+  <dt class="col-sm-3">Team</dt><dd class="col-sm-9">{% for m in company.team_members() %}{{ m.name }} ({{ m.position }}){% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</dd>
+  <dt class="col-sm-3">Last updated</dt><dd class="col-sm-9">{{ company.updated_at }}</dd>
+</dl></div></div>
+{% endblock %}

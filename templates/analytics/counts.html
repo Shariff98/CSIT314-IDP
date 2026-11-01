@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1 class="h3">{{ title }}</h1>
+{% include "analytics/_nav.html" %}
+<p>Total {{ metric }} across all your projects: <strong>{{ data.total }}</strong></p>
+<table class="table bg-white">
+  <thead><tr><th>Project</th><th>Category</th><th class="text-end">{{ metric|capitalize }}</th></tr></thead>
+  {% for row in data.rows %}<tr><td><a href="{{ url_for('portfolio.my_idp', idp_id=row.idp.id) }}">{{ row.idp.title }}</a></td><td>{{ row.idp.category }}</td><td class="text-end">{{ row[metric] }}</td></tr>
+  {% else %}<tr><td colspan="3">No projects yet.</td></tr>{% endfor %}
+</table>
+{% endblock %}

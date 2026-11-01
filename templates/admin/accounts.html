@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import options %}
+{% block title %}User accounts{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">User accounts</h1>
+  <a class="btn btn-primary" href="{{ url_for('account.create_account') }}">Create account</a>
+</div>
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-5"><input class="form-control" name="q" value="{{ args.q }}" placeholder="Search name or email"></div>
+  <div class="col-md-3"><select class="form-select" name="role">{{ options(roles, args.role, "Any role") }}</select></div>
+  <div class="col-md-2"><select class="form-select" name="status">{{ options(["Active", "Suspended"], args.status, "Any status") }}</select></div>
+  <div class="col-md-2"><button class="btn btn-outline-primary w-100">Search</button></div>
+</form>
+<p class="text-muted small">{{ accounts|length }} accounts</p>
+<div class="table-responsive"><table class="table table-sm table-hover bg-white">
+  <thead><tr><th>Name</th><th>Email</th><th>Profile</th><th>Status</th><th>Created</th><th></th></tr></thead>
+  <tbody>
+  {% for a in accounts %}
+  <tr>
+    <td>{{ a.name }}</td><td>{{ a.email }}</td><td>{{ a.role }}</td>
+    <td><span class="badge {{ 'text-bg-success' if a.status == 'Active' else 'text-bg-secondary' }}">{{ a.status }}</span></td>
+    <td class="small">{{ (a.created_at or '')[:10] }}</td>
+    <td class="text-end text-nowrap">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('account.edit_account', account_id=a.id) }}">Edit</a>
+      {% if a.status == 'Active' %}
+      <form class="d-inline" method="post" action="{{ url_for('account.change_account_status', account_id=a.id, action='suspend') }}"><button class="btn btn-sm btn-outline-danger">Suspend</button></form>
+      {% else %}
+      <form class="d-inline" method="post" action="{{ url_for('account.change_account_status', account_id=a.id, action='reactivate') }}"><button class="btn btn-sm btn-outline-success">Reactivate</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="6">No accounts match.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

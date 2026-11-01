@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_macros.html" import options %}
+{% block title %}{{ idp.title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-2">
+  <div><h1 class="h3 mb-1">{{ idp.title }}</h1>
+  <p class="text-muted">{{ idp.category }} · Budget ${{ idp.budget }} · {{ idp.status }} ·
+    {% if idp.is_published %}<span class="badge text-bg-success">Published</span>{% else %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+    · {{ idp.views }} views · {{ idp.shortlist_count() }} shortlisted</p></div>
+  <div class="text-nowrap">
+    {% if idp.is_published %}<a class="btn btn-outline-secondary" href="{{ url_for('idp.detail', idp_id=idp.id) }}">Customer view</a>{% endif %}
+    <a class="btn btn-primary" href="{{ url_for('portfolio.edit', idp_id=idp.id) }}">Edit</a>
+  </div>
+</div>
+<p>{{ idp.description }}</p>
+<p class="small text-muted">Property: {{ idp.property_type or '—' }} · Location: {{ idp.location or '—' }} · Completed: {{ idp.completion_date or '—' }} · Created {{ idp.created_at }}</p>
+
+<div class="row g-3">
+  <div class="col-md-4"><div class="card h-100"><div class="card-body">
+    <h2 class="h6">Visibility and status</h2>
+    <form method="post" action="{{ url_for('portfolio.publish', idp_id=idp.id) }}" class="mb-2">
+      {% if idp.is_published %}<button class="btn btn-sm btn-outline-secondary" name="action" value="unpublish">Unpublish (back to draft)</button>
+      {% else %}<button class="btn btn-sm btn-success" name="action" value="publish">Publish</button>{% endif %}
+    </form>
+    <form method="post" action="{{ url_for('portfolio.status', idp_id=idp.id) }}">
+      {% if idp.status == 'Current' %}<button class="btn btn-sm btn-outline-primary" name="status" value="Past">Mark as past (completed)</button>
+      {% else %}<button class="btn btn-sm btn-outline-primary" name="status" value="Current">Mark as current (ongoing)</button>{% endif %}
+    </form>
+    <hr>
+    <form method="post" action="{{ url_for('portfolio.delete', idp_id=idp.id) }}" onsubmit="return confirm('Delete this project for good?');">
+      <button class="btn btn-sm btn-outline-danger">Delete project</button></form>
+  </div></div></div>
+  <div class="col-md-4"><div class="card h-100"><div class="card-body">
+    <h2 class="h6">Category and style tags</h2>
+    <form method="post" action="{{ url_for('portfolio.tags', idp_id=idp.id) }}">
+      <select class="form-select form-select-sm mb-2" name="category">{{ options(categories, idp.category) }}</select>
+      <input class="form-control form-control-sm mb-2" name="style_tags" value="{{ idp.style_tags }}" placeholder="{{ styles[:3]|join(', ') }}">
+      <button class="btn btn-sm btn-primary">Save tags</button></form>
+  </div></div></div>
+  <div class="col-md-4"><div class="card h-100"><div class="card-body">
+    <h2 class="h6">Add a photo</h2>
+    <form method="post" action="{{ url_for('portfolio.upload_photo', idp_id=idp.id) }}" enctype="multipart/form-data">
+      <input class="form-control form-control-sm mb-2" type="file" name="photo" accept="image/*" required>
+      <button class="btn btn-sm btn-primary">Upload</button></form>
+    <p class="small text-muted mt-2 mb-0">JPG, PNG, GIF or WEBP, up to 5 MB, 10 photos per project.</p>
+  </div></div></div>
+</div>
+
+<h2 class="h5 mt-4">Photos</h2>
+<div class="row">
+{% for p in idp.photos() %}
+  <div class="col-6 col-md-3 mb-3"><div class="card">
+    <img src="{{ url_for('idp.uploaded', filename=p.filename) }}" class="card-img-top cover" alt="photo">
+    <div class="card-body p-2 d-flex justify-content-between">
+      {% if p.is_cover %}<span class="badge text-bg-primary align-self-center">Cover</span>
+      {% else %}<form method="post" action="{{ url_for('portfolio.photo_action', photo_id=p.id, action='cover') }}"><button class="btn btn-sm btn-link p-0">Set as cover</button></form>{% endif %}
+      <form method="post" action="{{ url_for('portfolio.photo_action', photo_id=p.id, action='delete') }}"><button class="btn btn-sm btn-link text-danger p-0">Delete</button></form>
+    </div></div></div>
+{% else %}<p class="text-muted">No photos yet.</p>{% endfor %}
+</div>
+{% endblock %}
