@@ -133,6 +133,43 @@ export function AppProvider({ children }) {
     return payment;
   }
 
+  async function settleOutstandingInvoice(id) {
+    const invoice = payments.find((item) => item.id === id);
+
+    // Only the customer who owns the invoice can settle it.
+    if (
+      user?.role !== 'customer' ||
+      !invoice ||
+      invoice.customerName !== user.name
+    ) {
+      throw new Error('Invoice not found for this customer.');
+    }
+
+    if (invoice.status !== 'Outstanding') {
+      throw new Error('This invoice is already paid.');
+    }
+
+    // === BACKEND INTEGRATION ===
+    // Python must verify invoice ownership and confirm payment
+    // before marking the invoice as Paid.
+    await api.settleOutstandingInvoice(id);
+
+    const updated = {
+      ...invoice,
+      status: 'Paid',
+      paidOn: new Date().toISOString().slice(0, 10),
+    };
+
+    // Update the EXISTING invoice, instead of adding a duplicate.
+    setPayments((current) =>
+      current.map((item) =>
+        item.id === id ? updated : item
+      )
+    );
+
+    return updated;
+  }
+
   async function submitReview(data) {
     await api.submitReview(data);
     const review = {
@@ -308,6 +345,7 @@ export function AppProvider({ children }) {
     submitRequirements,
     bookConsultation,
     makePayment,
+    settleOutstandingInvoice,
     submitReview,
     reportCompany,
     saveCompanyProfile,

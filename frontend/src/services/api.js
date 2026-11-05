@@ -45,6 +45,7 @@ export const api = {
   submitRequirements: (payload) => mockRequest('/renovation-requirements', { method: 'POST', body: JSON.stringify(payload) }),
   bookConsultation: (payload) => mockRequest('/consultations', { method: 'POST', body: JSON.stringify(payload) }),
   makePayment: (payload) => mockRequest('/payments', { method: 'POST', body: JSON.stringify(payload) }),
+  settleOutstandingInvoice: (id) => mockRequest(`/payments/${id}/settle`, { method: 'PATCH' }),
   submitReview: (payload) => mockRequest('/reviews', { method: 'POST', body: JSON.stringify(payload) }),
   reportCompany: (payload) => mockRequest('/reports/companies', { method: 'POST', body: JSON.stringify(payload) }),
   toggleFavouriteDesigner: (id, saved) => mockRequest(`/favourites/designers/${id}`, { method: saved ? 'POST' : 'DELETE' }),
