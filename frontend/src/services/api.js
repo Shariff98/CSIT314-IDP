@@ -1,39 +1,93 @@
 // =============================================================
 // BACKEND INTEGRATION LAYER
 // =============================================================
-// The React pages should call functions from this file (directly or
-// through AppContext). For the assignment prototype the functions below
-// simulate a successful server response.
-//
-// When the Python backend is ready, replace mockRequest() with fetch()
-// calls to the agreed REST endpoints. Keep the function names stable so
-// most React pages do not need to change.
+// flaskApi exposes the implemented backend endpoints. The existing api
+// export stays mock-based until AppContext and pages are migrated.
 // =============================================================
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+export const API_BASE_URL = '/api';
+
+// Return Flask's { data: ... } envelope unchanged. Errors carry the HTTP
+// status and backend code so callers can distinguish an expired session.
+export async function apiRequest(endpoint, options = {}) {
+  const headers = new Headers(options.headers);
+  headers.set('Accept', 'application/json');
+  if (options.body !== undefined && typeof options.body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
+  } catch (cause) {
+    if (cause.name === 'AbortError') throw cause;
+    throw new Error('Unable to reach the server. Check your connection and that Flask is running.', { cause });
+  }
+
+  let payload;
+  try {
+    const contentType = response.headers.get('Content-Type') || '';
+    if (!contentType.includes('application/json') && !contentType.includes('+json')) {
+      throw new Error('Non-JSON response');
+    }
+    payload = await response.json();
+  } catch (cause) {
+    if (cause.name === 'AbortError') throw cause;
+    const error = new Error(`Unexpected server response (HTTP ${response.status}). Expected JSON.`, { cause });
+    error.status = response.status;
+    throw error;
+  }
+
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || `Request failed (HTTP ${response.status}).`);
+    error.status = response.status;
+    error.code = payload?.error?.code;
+    throw error;
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Object.hasOwn(payload, 'data')) {
+    const error = new Error('Unexpected server response. Missing data envelope.');
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+const postJson = (endpoint, payload) => apiRequest(endpoint, {
+  method: 'POST',
+  ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+});
+
+export const flaskApi = {
+  login: (payload) => postJson('/auth/login', payload),
+  registerCustomer: (payload) => postJson('/customers/register', payload),
+  getCurrentUser: () => apiRequest('/auth/me'),
+  logout: () => postJson('/auth/logout'),
+  getProjects: (params = {}, options = {}) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+    }
+    return apiRequest(`/idps${query.size ? `?${query}` : ''}`, options);
+  },
+  getProjectOptions: () => apiRequest('/idps/options'),
+  // The detail route requires an ID: /api/idps/<id>.
+  getProject: (id, options = {}) => {
+    if (!/^\d+$/.test(String(id)) || !Number.isSafeInteger(Number(id)) || Number(id) < 1) {
+      return Promise.reject(new Error('A positive project ID is required.'));
+    }
+    return apiRequest(`/idps/${encodeURIComponent(id)}`, options);
+  },
+};
 
 async function mockRequest(endpoint, options = {}) {
   console.info(`[MOCK API] ${options.method || 'GET'} ${endpoint}`, options.body || '');
   await new Promise((resolve) => setTimeout(resolve, 120));
   return { ok: true, data: options.body ? JSON.parse(options.body) : null };
 
-  /*
-  // === BACKEND INTEGRATION: REPLACE MOCK CODE ABOVE WITH THIS ===
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || 'Request failed');
-  }
-
-  return { ok: true, data: await response.json() };
-  */
 }
 
 export const api = {
