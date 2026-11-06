@@ -2,10 +2,11 @@
 IDPDetailPage (US-34, US-37, US-45) and CreateIDPPage (US-54)."""
 import uuid
 
-from flask import (Blueprint, abort, current_app, flash, redirect, render_template, request,
+from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request,
                    send_from_directory, session, url_for)
 
 from boundary.common import current_user_id, role_required
+from boundary.project_serializer import project_json
 from control.browse_idp_controller import SORT_OPTIONS, BrowseIDPController
 from control.create_idp_controller import CreateIDPController
 from control.filter_idp_controller import FilterIDPController
@@ -15,6 +16,7 @@ from control.search_category_controller import SearchCategoryController
 from control.search_idp_controller import SearchIDPController
 from control.view_designer_projects_controller import ViewDesignerProjectsController
 from control.view_idp_controller import ViewIDPController
+from control.validation import to_int
 
 bp = Blueprint("idp", __name__)
 
@@ -26,17 +28,57 @@ def form_options():
             "styles": STYLES, "sort_options": SORT_OPTIONS}
 
 
+def _browse_results(args):
+    keyword, sort = args.get("q", ""), args.get("sort", "newest")
+    if any(args.get(name) for name in FILTERS):
+        return FilterIDPController().filter(keyword, *(args.get(name) for name in FILTERS), sort=sort)
+    if keyword.strip():
+        return SearchIDPController().search(keyword, sort)
+    return BrowseIDPController().browse(sort)
+
+
+@bp.route("/api/idps")
+def api_search():
+    try:
+        page = to_int(request.args.get("page", "1"), "Page", minimum=1)
+        per_page = to_int(request.args.get("per_page", "24"), "Page size", minimum=1, maximum=100)
+        results = _browse_results(request.args)
+    except ValueError as error:
+        return jsonify(error={"code": "invalid_request", "message": str(error)}), 400
+    start = (page - 1) * per_page
+    return jsonify(data={"items": [project_json(project) for project in results[start:start + per_page]],
+                         "total": len(results), "page": page, "per_page": per_page,
+                         "pages": max(1, (len(results) + per_page - 1) // per_page)})
+
+
+@bp.route("/api/idps/options")
+def api_options():
+    projects = BrowseIDPController().browse()
+    options = form_options()
+    options["styles"] = sorted(set(STYLES).union(tag for project in projects for tag in project.style_tag_list))
+    options["locations"] = sorted({project.location for project in projects if project.location.strip()})
+    return jsonify(data=options)
+
+
+@bp.route("/api/idps/<int:idp_id>")
+def api_detail(idp_id):
+    view_key = session.setdefault("view_key", uuid.uuid4().hex)
+    project = ViewIDPController().view(idp_id, current_user_id(), view_key)
+    if project is None:
+        return jsonify(error={"code": "not_found", "message": "Project not found."}), 404
+    saved = session.get("role") == "Customer" and SaveFavouriteController().is_saved(current_user_id(), idp_id)
+    return jsonify(data={"project": project_json(project),
+                         "other_projects": [project_json(other) for other in
+                                            ViewDesignerProjectsController().other_projects(idp_id)],
+                         "is_saved": bool(saved)})
+
+
 @bp.route("/")
 def search():
     a = request.args
-    keyword, sort = a.get("q", ""), a.get("sort", "newest")
+    keyword = a.get("q", "")
     try:
-        if any(a.get(name) for name in FILTERS):
-            results = FilterIDPController().filter(keyword, *(a.get(name) for name in FILTERS), sort=sort)
-        elif keyword.strip():
-            results = SearchIDPController().search(keyword, sort)
-        else:
-            results = BrowseIDPController().browse(sort)
+        results = _browse_results(a)
     except ValueError as error:
         flash(str(error), "danger")
         results = []
