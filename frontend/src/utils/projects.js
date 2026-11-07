@@ -19,6 +19,17 @@ export function projectCardData(project) {
   };
 }
 
+export function projectDetailsData(project) {
+  if (!project || !Number.isSafeInteger(project.id) || project.id < 1) {
+    throw new Error('Unexpected project details response.');
+  }
+  return { ...projectCardData(project), company: project.company || null, status: project.status };
+}
+
+export function projectDetailsError(error) {
+  return error.status === 404 ? 'Project not found or unavailable.' : `Could not load project: ${error.message}`;
+}
+
 export function projectQuery(search, filters, page, perPage = 24) {
   return { q: search.trim(), category: filters.category, style: filters.style,
     max_budget: filters.budget, property_type: filters.propertyType, location: filters.location,

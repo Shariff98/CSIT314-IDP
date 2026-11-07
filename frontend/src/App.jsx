@@ -12,6 +12,7 @@ import DesignersPage from './pages/Customer/DesignersPage';
 import IDPsPage from './pages/Customer/IDPsPage';
 import DesignerProfilePage from './pages/Customer/DesignerProfilePage';
 import IDPDetailsPage from './pages/Customer/IDPDetailsPage';
+import ApiIDPDetailsPage from './pages/Customer/ApiIDPDetailsPage';
 import RequirementsPage from './pages/Customer/RequirementsPage';
 import FavouritesPage from './pages/Customer/FavouritesPage';
 import CustomerConsultationsPage from './pages/Customer/ConsultationsPage';
@@ -41,6 +42,7 @@ export default function App() {
   const explicitlyNavigated = useRef(false);
   const [selectedDesignerId, setSelectedDesignerId] = useState(101);
   const [selectedProjectId, setSelectedProjectId] = useState(201);
+  const [selectedApiProjectId, setSelectedApiProjectId] = useState(null);
 
   const go = (next) => {
     explicitlyNavigated.current = true;
@@ -56,6 +58,11 @@ export default function App() {
   const openProject = (id) => {
     setSelectedProjectId(id);
     go('project-details');
+  };
+
+  const openApiProject = (id) => {
+    setSelectedApiProjectId(id);
+    go('api-project-details');
   };
 
   const allowed = canAccessPage(page, user);
@@ -78,10 +85,11 @@ export default function App() {
     case 'register': content = <RegisterPage go={go} />; break;
     case 'designer-profile': content = <DesignerProfilePage designerId={selectedDesignerId} go={go} openProject={openProject} />; break;
     case 'project-details': content = <IDPDetailsPage projectId={selectedProjectId} go={go} openDesigner={openDesigner} />; break;
+    case 'api-project-details': content = <ApiIDPDetailsPage key={selectedApiProjectId} projectId={selectedApiProjectId} onBack={() => go('customer-idps')} />; break;
 
     case 'customer-home': content = <CustomerHome go={go} openDesigner={openDesigner} openProject={openProject} />; break;
     case 'customer-designers': content = <DesignersPage openDesigner={openDesigner} openProject={openProject} />; break;
-    case 'customer-idps': content = <IDPsPage openProject={openProject} />; break;
+    case 'customer-idps': content = <IDPsPage openApiProject={openApiProject} />; break;
     case 'customer-requirements': content = <RequirementsPage />; break;
     case 'customer-favourites': content = <FavouritesPage openDesigner={openDesigner} openProject={openProject} />; break;
     case 'customer-consultations': content = <CustomerConsultationsPage />; break;
