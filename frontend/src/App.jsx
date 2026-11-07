@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Layout from './components/Layout';
 import { useApp } from './context/AppContext';
+import { homeForRole, canAccessPage, initialPage } from './utils/auth';
 
 import LandingPage from './pages/Public/LandingPage';
 import LoginPage from './pages/Public/LoginPage';
@@ -33,19 +34,16 @@ import ReportsPage from './pages/Admin/ReportsPage';
 import ModerationPage from './pages/Admin/ModerationPage';
 import CategoriesPage from './pages/Admin/CategoriesPage';
 
-const homeForRole = {
-  customer: 'customer-home',
-  designer: 'designer-dashboard',
-  admin: 'admin-dashboard',
-};
-
 export default function App() {
-  const { user } = useApp();
+  const { user, authLoading } = useApp();
   const [page, setPage] = useState('landing');
+  const [initialNavigationPending, setInitialNavigationPending] = useState(true);
+  const explicitlyNavigated = useRef(false);
   const [selectedDesignerId, setSelectedDesignerId] = useState(101);
   const [selectedProjectId, setSelectedProjectId] = useState(201);
 
   const go = (next) => {
+    explicitlyNavigated.current = true;
     setPage(next);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -60,25 +58,19 @@ export default function App() {
     go('project-details');
   };
 
-useEffect(() => {
-  const isPublicProfile = page === 'designer-profile';
+  const allowed = canAccessPage(page, user);
+  useEffect(() => {
+    if (!authLoading && initialNavigationPending) {
+      setPage(current => initialPage(current, user, explicitlyNavigated.current, window.location.pathname === '/'));
+      setInitialNavigationPending(false);
+    }
+  }, [authLoading, initialNavigationPending, user]);
+  useEffect(() => {
+    if (!authLoading && !initialNavigationPending && !allowed) setPage(user ? homeForRole[user.role] || 'landing' : 'login');
+  }, [page, user, authLoading, initialNavigationPending, allowed]);
 
-  const protectedPrefix = isPublicProfile
-    ? null
-    : page.startsWith('customer-')
-      ? 'customer'
-      : page.startsWith('designer-')
-        ? 'designer'
-        : page.startsWith('admin-')
-          ? 'admin'
-          : null;
-
-  if (protectedPrefix && !user) {
-    setPage('login');
-  } else if (protectedPrefix && user?.role !== protectedPrefix) {
-    setPage(homeForRole[user.role]);
-  }
-}, [page, user]);
+  if (authLoading || initialNavigationPending) return <Layout page={page} go={go}><div className="auth-page" role="status">Checking your login session...</div></Layout>;
+  if (!allowed) return <Layout page={page} go={go}><div className="auth-page" role="status">Opening your account page...</div></Layout>;
 
   let content;
   switch (page) {
@@ -110,6 +102,7 @@ useEffect(() => {
     case 'admin-verification': content = <VerificationPage />; break;
     case 'admin-reports': content = <ReportsPage />; break;
     case 'admin-moderation': content = <ModerationPage />; break;
+    case 'manager-categories':
     case 'admin-categories': content = <CategoriesPage />; break;
 
     default: content = <LandingPage go={go} openDesigner={openDesigner} openProject={openProject} />;

@@ -107,7 +107,7 @@ export default function DesignerProfilePage({ designerId, go, openProject }) {
           <p>{designer.description}</p>
           <div className="tag-row">{designer.specialties.map((item) => <span className="tag" key={item}>{item}</span>)}</div>
           <div className="company-meta"><span>★ {averageRating || designer.rating}</span><span>{designer.yearsExperience} years experience</span><span>{designer.location}</span></div>
-          {user?.role === 'customer' ? <button className="secondary-button" onClick={() => toggleFavouriteDesigner(designer.id)}>{saved ? 'Remove favourite designer' : 'Save favourite designer'}</button> : !user ? <button className="secondary-button" onClick={() => go('login')}>Log in to save / enquire</button> : null}
+          {user?.role === 'Customer' ? <button className="secondary-button" onClick={() => toggleFavouriteDesigner(designer.id)}>{saved ? 'Remove favourite designer' : 'Save favourite designer'}</button> : !user ? <button className="secondary-button" onClick={() => go('login')}>Log in to save / enquire</button> : null}
         </div>
       </section>
 

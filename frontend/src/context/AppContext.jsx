@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   demoAccounts,
   initialActiveProjects,
@@ -12,13 +12,19 @@ import {
   initialProjects,
   initialReviews,
 } from '../data/mockData';
-import { api } from '../services/api';
+import { api, flaskApi } from '../services/api';
+import { publicUser, registrationPayload, unauthenticatedMessage } from '../utils/auth';
 
 const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [accounts, setAccounts] = useState(demoAccounts);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMessage, setAuthMessage] = useState('');
+  const authVersion = useRef(0);
+  const authBusy = useRef(false);
+  const identity = useRef(null);
+  const [accounts, setAccounts] = useState(() => demoAccounts.map(({ password, ...account }) => account));
   const [designers, setDesigners] = useState(initialDesigners);
   const [projects, setProjects] = useState(initialProjects);
   const [packages, setPackages] = useState(initialPackages);
@@ -29,43 +35,92 @@ export function AppProvider({ children }) {
   const [activeProjects, setActiveProjects] = useState(initialActiveProjects);
   const [companyReports, setCompanyReports] = useState(initialCompanyReports);
   const [categories, setCategories] = useState(initialCategories);
-  const [favouriteDesignerIds, setFavouriteDesignerIds] = useState([102]);
-  const [favouriteProjectIds, setFavouriteProjectIds] = useState([203]);
+  const [favouriteDesignerIds, setFavouriteDesignerIds] = useState([]);
+  const [favouriteProjectIds, setFavouriteProjectIds] = useState([]);
+
+  function clearUserState() {
+    identity.current = null;
+    setUser(null);
+    setFavouriteDesignerIds([]);
+    setFavouriteProjectIds([]);
+    setAccounts(demoAccounts.map(({ password, ...account }) => account));
+    setDesigners(initialDesigners);
+    setProjects(initialProjects);
+    setPackages(initialPackages);
+    setReviews(initialReviews);
+    setEnquiries(initialEnquiries);
+    setConsultations(initialConsultations);
+    setPayments(initialPayments);
+    setActiveProjects(initialActiveProjects);
+    setCompanyReports(initialCompanyReports);
+    setCategories(initialCategories);
+  }
+
+  useEffect(() => {
+    let active = true;
+    async function restoreSession() {
+      if (authBusy.current) return;
+      const version = ++authVersion.current;
+      try {
+        const response = await flaskApi.getCurrentUser();
+        if (active && version === authVersion.current) {
+          const restored = publicUser(response.data.user);
+          if (identity.current !== null && identity.current !== restored.id) clearUserState();
+          identity.current = restored.id;
+          setUser(restored);
+          setAuthMessage('');
+        }
+      } catch (error) {
+        if (!active || version !== authVersion.current) return;
+        if (error.status === 401) {
+          const wasAuthenticated = identity.current !== null;
+          clearUserState();
+          setAuthMessage(current => unauthenticatedMessage(wasAuthenticated, current));
+        } else {
+          setAuthMessage(error.message);
+        }
+      } finally {
+        if (active && version === authVersion.current) setAuthLoading(false);
+      }
+    }
+    restoreSession();
+    // Recheck when returning to the tab, so expired sessions are cleared.
+    window.addEventListener('focus', restoreSession);
+    return () => { active = false; window.removeEventListener('focus', restoreSession); };
+  }, []);
 
   async function login(email, password) {
-    // === BACKEND INTEGRATION ===
-    // Python should authenticate credentials and return user id + role + token.
-    await api.login({ email, password });
-    const match = accounts.find(
-      (account) => account.email.toLowerCase() === email.trim().toLowerCase() && account.password === password
-    );
-    if (!match) throw new Error('Invalid email or password.');
-    if (match.status !== 'active') throw new Error('This account is currently suspended.');
-    setUser(match);
-    return match;
+    ++authVersion.current;
+    authBusy.current = true;
+    try {
+      const response = await flaskApi.login({ email, password });
+      const account = publicUser(response.data.user);
+      clearUserState();
+      identity.current = account.id;
+      setAuthMessage('');
+      setUser(account);
+      return account;
+    } finally {
+      authBusy.current = false;
+    }
   }
 
   async function registerCustomer(data) {
-    if (accounts.some((account) => account.email.toLowerCase() === data.email.toLowerCase())) {
-      throw new Error('An account with this email already exists.');
-    }
-    await api.registerCustomer(data);
-    const newAccount = {
-      id: Date.now(),
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      password: data.password,
-      role: 'customer',
-      status: 'active',
-    };
-    setAccounts((current) => [...current, newAccount]);
-    setUser(newAccount);
-    return newAccount;
+    const response = await flaskApi.registerCustomer(registrationPayload(data));
+    setAuthMessage('Account created. Please log in with your email and password.');
+    return response.data.user;
   }
 
-  function logout() {
-    setUser(null);
+  async function logout() {
+    ++authVersion.current;
+    authBusy.current = true;
+    try {
+      await flaskApi.logout();
+      clearUserState();
+      setAuthMessage('You have been logged out.');
+    } finally {
+      authBusy.current = false;
+    }
   }
 
   async function toggleFavouriteDesigner(id) {
@@ -138,7 +193,7 @@ export function AppProvider({ children }) {
 
     // Only the customer who owns the invoice can settle it.
     if (
-      user?.role !== 'customer' ||
+      user?.role !== 'Customer' ||
       !invoice ||
       invoice.customerName !== user.name
     ) {
@@ -322,6 +377,8 @@ export function AppProvider({ children }) {
 
   const value = useMemo(() => ({
     user,
+    authLoading,
+    authMessage,
     accounts,
     designers,
     projects,
@@ -369,7 +426,7 @@ export function AppProvider({ children }) {
     addCategory,
     removeCategory,
   }), [
-    user, accounts, designers, projects, packages, reviews, enquiries, consultations, payments,
+    user, authLoading, authMessage, accounts, designers, projects, packages, reviews, enquiries, consultations, payments,
     activeProjects, companyReports, categories, favouriteDesignerIds, favouriteProjectIds,
   ]);
 
