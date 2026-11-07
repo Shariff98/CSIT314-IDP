@@ -156,6 +156,16 @@ CREATE TABLE IF NOT EXISTS notification (
     created_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS chat_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id     INTEGER REFERENCES user_account(id) ON DELETE SET NULL,
+    message         TEXT NOT NULL,
+    filters         TEXT NOT NULL DEFAULT '{}',          -- JSON of the extracted preferences
+    recommended_ids TEXT NOT NULL DEFAULT '',            -- comma separated idp ids
+    source          TEXT NOT NULL DEFAULT 'llm',         -- llm | fallback
+    created_at      TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS ix_view_event_idp ON view_event(idp_id, viewed_at);
 CREATE INDEX IF NOT EXISTS ix_favourite_idp ON favourite(idp_id, saved_at);
 CREATE INDEX IF NOT EXISTS ix_idp_designer ON idp(designer_id);

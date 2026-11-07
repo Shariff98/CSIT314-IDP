@@ -10,9 +10,16 @@ PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08
 
 
 @pytest.fixture
-def app(tmp_path):
+def fake_llm():
+    """Stands in for the LLM service, so the chatbot tests need no API key or internet."""
+    from tests.chatbot_helpers import FakeLLMGateway
+    return FakeLLMGateway()
+
+
+@pytest.fixture
+def app(tmp_path, fake_llm):
     """Every test gets a fresh, empty database file and upload folder."""
-    return create_app(db_path=str(tmp_path / "test.db"), upload_dir=str(tmp_path / "uploads"))
+    return create_app(db_path=str(tmp_path / "test.db"), upload_dir=str(tmp_path / "uploads"), llm_gateway=fake_llm)
 
 
 @pytest.fixture

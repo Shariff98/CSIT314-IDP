@@ -4,6 +4,8 @@ from entity.db import get_connection, now
 from entity.view_event import ViewEvent
 
 SAVES = "(SELECT COUNT(*) FROM favourite f WHERE f.idp_id = i.id)"
+DESIGNER = "(SELECT c.name FROM company c WHERE c.designer_id = i.designer_id)"
+STYLE_LIST = "(',' || REPLACE(i.style_tags, ', ', ',') || ',')"
 SORTS = {
     "newest": "i.created_at DESC, i.id DESC",
     "oldest": "i.created_at ASC, i.id ASC",
@@ -20,7 +22,7 @@ class IDP:
 
     def __init__(self, id, designer_id, title, description, category, budget, style_tags="",
                  property_type="", location="", completion_date=None, status="Current", published=1,
-                 views=0, created_at=None):
+                 views=0, created_at=None, saves=0, designer_name=None):
         self.id = id
         self.designer_id = designer_id
         self.title = title
@@ -35,14 +37,14 @@ class IDP:
         self.published = published
         self.views = views
         self.created_at = created_at
+        self.saves = saves                  # filled by queries that count favourites
+        self.designer_name = designer_name  # company name, filled by find_in_budget()
 
     @staticmethod
     def _from_row(row):
         if not row:
             return None
-        data = dict(row)
-        data.pop("saves", None)
-        return IDP(**data)
+        return IDP(**dict(row))
 
     # ---------- create / load ----------
     @classmethod
@@ -112,6 +114,36 @@ class IDP:
             where.append("i.id != ?")
             params.append(exclude_id)
         return cls._query(where, params, sort, limit)
+
+    # ---------- budget chatbot (Get budget-matched recommendations) ----------
+    @classmethod
+    def find_in_budget(cls, low, high, category=None, styles=None):
+        """Published projects with low <= budget <= high, optionally filtered.
+
+        category: exact category name. styles: list of style names; a project
+        matches if it has at least one of them. Each result carries its save
+        count and designer company name, for ranking and for the chat cards.
+        """
+        where = ["i.published = 1", "i.budget BETWEEN ? AND ?"]
+        params = [int(low), int(high)]
+        if category:
+            where.append("i.category = ?")
+            params.append(category)
+        if styles:
+            where.append("(" + " OR ".join(f"{STYLE_LIST} LIKE ?" for _ in styles) + ")")
+            params.extend(f"%,{s},%" for s in styles)
+        sql = (f"SELECT i.*, {SAVES} AS saves, {DESIGNER} AS designer_name FROM idp i "
+               f"WHERE {' AND '.join(where)} ORDER BY i.budget, i.id")
+        with get_connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [cls._from_row(r) for r in rows]
+
+    @staticmethod
+    def known_styles():
+        """Every style tag used by a published project, sorted."""
+        with get_connection() as conn:
+            rows = conn.execute("SELECT style_tags FROM idp WHERE published = 1").fetchall()
+        return sorted({s.strip() for r in rows for s in (r["style_tags"] or "").split(",") if s.strip()})
 
     # ---------- designer side (own projects, drafts included) ----------
     @classmethod
@@ -210,6 +242,10 @@ class IDP:
     def company(self):
         from entity.company import Company
         return Company.find_by_designer(self.designer_id)
+
+    @property
+    def styles(self):
+        return self.style_tag_list
 
     @property
     def style_tag_list(self):

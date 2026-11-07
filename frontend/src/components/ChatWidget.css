@@ -1,0 +1,33 @@
+.cw-launcher {
+  position: fixed; right: 20px; bottom: 20px; width: 56px; height: 56px; border-radius: 50%;
+  border: none; background: #2f6fed; color: #fff; font-size: 24px; cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .2); z-index: 1000;
+}
+.cw-panel {
+  position: fixed; right: 20px; bottom: 20px; width: min(380px, calc(100vw - 32px)); height: min(560px, calc(100vh - 40px));
+  display: flex; flex-direction: column; background: #fff; border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .2); z-index: 1000; font-family: inherit;
+}
+.cw-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;
+  background: #2f6fed; color: #fff; border-radius: 12px 12px 0 0; font-weight: 600; }
+.cw-header button { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; }
+.cw-messages { flex: 1; overflow-y: auto; padding: 12px; }
+.cw-msg { margin: 8px 0; max-width: 90%; }
+.cw-msg p { margin: 0; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; }
+.cw-user { margin-left: auto; }
+.cw-user p { background: #2f6fed; color: #fff; }
+.cw-assistant p { background: #f1f3f6; color: #222; }
+.cw-error p { background: #fdecec; color: #a32020; }
+.cw-typing { color: #888; font-style: italic; }
+.cw-note { color: #888; }
+.cw-cards { display: grid; gap: 8px; margin-top: 8px; }
+.cw-card { display: flex; flex-direction: column; gap: 2px; padding: 8px; border: 1px solid #dde1e6;
+  border-radius: 8px; text-decoration: none; color: inherit; }
+.cw-card:hover { border-color: #2f6fed; }
+.cw-card img { width: 100%; height: 80px; object-fit: cover; border-radius: 6px; }
+.cw-card small { color: #666; }
+.cw-label { align-self: flex-start; font-size: 12px; background: #e8efff; color: #2f6fed; border-radius: 4px; padding: 0 6px; }
+.cw-form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #eee; }
+.cw-form input { flex: 1; padding: 8px; border: 1px solid #ccd; border-radius: 6px; }
+.cw-form button { padding: 8px 14px; border: none; border-radius: 6px; background: #2f6fed; color: #fff; cursor: pointer; }
+.cw-form button:disabled { opacity: .5; cursor: default; }

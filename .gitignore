@@ -6,3 +6,4 @@ ci-uploads/
 .coverage
 htmlcov/
 .pytest_cache/
+.env
