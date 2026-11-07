@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useApp } from '../../context/AppContext';
 import { flaskApi } from '../../services/api';
 import { pageRequest, projectDetailsData, projectDetailsError } from '../../utils/projects';
+import { canSaveProject, favouriteMutation, favouriteError } from '../../utils/favourites';
 
 const placeholder = '/project-living.svg';
 const money = value => Number(value).toLocaleString('en-SG');
@@ -17,8 +19,9 @@ function Field({ label, value }) {
     ? <div><dt>{label}</dt><dd>{Array.isArray(value) ? value.join(', ') : value}</dd></div> : null;
 }
 
-// Real API records never read from, write to, or fall back to AppContext mocks.
+// Only authentication is read from context. Project/favourite data stays local.
 export default function ApiIDPDetailsPage({ projectId, onBack }) {
+  const { user } = useApp();
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -32,15 +35,15 @@ export default function ApiIDPDetailsPage({ projectId, onBack }) {
       success: response => {
         const project = projectDetailsData(response.data.project);
         if (project.id !== Number(projectId)) throw new Error('Server returned a different project.');
-        setResult({ requestedId: projectId, project });
+        setResult({ requestedId: projectId, customerId: user?.id, project, isSaved: response.data.is_saved === true });
       },
       failure: setError,
       settled: () => setLoading(false),
     });
-  }, [projectId, retry]);
+  }, [projectId, retry, user?.id, user?.role]);
 
   const back = <button className="text-button" onClick={onBack}>Back to Browse</button>;
-  if (loading || (!error && result?.requestedId !== projectId)) {
+  if (loading || (!error && (result?.requestedId !== projectId || result?.customerId !== user?.id))) {
     return <div className="page-shell">{back}<div className="panel form-card" role="status">Loading project details...</div></div>;
   }
   if (error) {
@@ -52,10 +55,45 @@ export default function ApiIDPDetailsPage({ projectId, onBack }) {
   }
 
   const { project } = result;
-  return <ApiProjectContent project={project} onBack={onBack} />;
+  return <ApiProjectContent project={project} onBack={onBack} favouriteAction={canSaveProject(user)
+    ? <FavouriteProjectButton key={`${user.id}:${project.id}:${result.isSaved}`} projectId={project.id} initialSaved={result.isSaved} /> : null} />;
 }
 
-export function ApiProjectContent({ project, onBack }) {
+export function FavouriteProjectButton({ projectId, initialSaved }) {
+  const [saved, setSaved] = useState(initialSaved);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const change = useRef(null);
+  const busy = useRef(false);
+  if (!change.current) change.current = favouriteMutation();
+  const active = useRef(true);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+
+  async function toggle() {
+    if (busy.current) return;
+    busy.current = true;
+    setPending(true);
+    setError('');
+    try {
+      const result = await change.current(projectId, !saved);
+      if (active.current && result) setSaved(result.saved);
+    } catch (error) {
+      if (active.current) setError(favouriteError(error));
+    } finally {
+      busy.current = false;
+      if (active.current) setPending(false);
+    }
+  }
+
+  return <div>
+    <button className="primary-button full-width" onClick={toggle} disabled={pending} aria-pressed={saved}>
+      {pending ? 'Updating favourites...' : saved ? 'Remove from Favourites' : 'Save to Favourites'}
+    </button>
+    {error && <p className="alert error-alert" role="alert">{error}</p>}
+  </div>;
+}
+
+export function ApiProjectContent({ project, onBack, favouriteAction = null }) {
   const company = project.company;
   return <div className="page-shell">
     <button className="text-button" onClick={onBack}>Back to Browse</button>
@@ -79,6 +117,7 @@ export function ApiProjectContent({ project, onBack }) {
           <Field label="Views" value={project.views ?? 0} />
         </dl>
         {project.styles.length ? <div className="tag-row">{project.styles.map((style, index) => <span className="tag" key={`${style}-${index}`}>{style}</span>)}</div> : <p className="muted">No design styles specified.</p>}
+        {favouriteAction}
       </aside>
     </div>
     <section className="panel form-card section-block" aria-label="Company information">

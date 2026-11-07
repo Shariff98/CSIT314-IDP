@@ -74,6 +74,15 @@ export const flaskApi = {
     return apiRequest(`/idps${query.size ? `?${query}` : ''}`, options);
   },
   getProjectOptions: () => apiRequest('/idps/options'),
+  saveProject: (id) => postJson(`/favourites/projects/${encodeURIComponent(id)}`),
+  removeSavedProject: (id) => apiRequest(`/favourites/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  getFavouriteProjects: (params = {}) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+    }
+    return apiRequest(`/favourites/projects${query.size ? `?${query}` : ''}`);
+  },
   // The detail route requires an ID: /api/idps/<id>.
   getProject: (id, options = {}) => {
     if (!/^\d+$/.test(String(id)) || !Number.isSafeInteger(Number(id)) || Number(id) < 1) {
