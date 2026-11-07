@@ -1,10 +1,15 @@
 """Boundary for the designer's own portfolio: MyIDPsPage (US-16, US-03), MyIDPDetailPage (US-27),
 EditIDPPage (US-04, US-26) and the buttons for delete (US-05), status (US-06), publish (US-33)
 and photos (US-55)."""
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, session, url_for
 
 from boundary.common import current_user_id, role_required, uploaded_file
 from boundary.idp_boundary import form_options
+from boundary.project_serializer import project_json
+from control.logout_controller import LogoutController
+from control.search_user_account_controller import SearchUserAccountController
+from control.search_user_profile_controller import SearchUserProfileController
+from control.search_category_controller import SearchCategoryController
 from control.assign_idp_tags_controller import AssignIDPTagsController
 from control.delete_idp_controller import DeleteIDPController
 from control.list_my_idps_controller import ListMyIDPsController
@@ -16,8 +21,35 @@ from control.upload_idp_photo_controller import UploadIDPPhotoController
 from control.view_my_idp_controller import ViewMyIDPController
 
 bp = Blueprint("portfolio", __name__, url_prefix="/my")
+api_bp = Blueprint("portfolio_api", __name__, url_prefix="/api/designer")
 designer_only = role_required("InteriorDesigner")
 SEARCH_FIELDS = ("q", "status", "category", "date_from", "date_to")
+
+
+@api_bp.route("/portfolio", methods=["GET"])
+def api_my_portfolio():
+    account_id = current_user_id()
+    account = SearchUserAccountController().view(account_id) if isinstance(account_id, int) else None
+    profiles = SearchUserProfileController().search() if account else []
+    profile = next((profile for profile in profiles if profile.name == account.role), None) if account else None
+    if account is None or account.status != "Active" or profile is None or profile.status != "Active":
+        LogoutController().logout(session)
+        return jsonify(error={"code": "authentication_required", "message": "Please log in with an active account."}), 401
+    if account.role != "InteriorDesigner":
+        return jsonify(error={"code": "forbidden", "message": "An InteriorDesigner account is required."}), 403
+    args = request.args
+    try:
+        category = args.get("category")
+        # Own projects can retain suspended categories, so allow all existing categories.
+        if category and not any(row["category"].name == category for row in SearchCategoryController().search()):
+            raise ValueError("Unknown category filter")
+        if any(args.get(field) for field in SEARCH_FIELDS):
+            projects = SearchMyIDPsController().search(account.id, *(args.get(field) for field in SEARCH_FIELDS))
+        else:
+            projects = ListMyIDPsController().list_idps(account.id)
+    except ValueError as error:
+        return jsonify(error={"code": "invalid_request", "message": str(error)}), 400
+    return jsonify(data={"items": [project_json(project) for project in projects], "total": len(projects)})
 
 
 @bp.route("/idps")

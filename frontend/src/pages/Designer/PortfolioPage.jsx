@@ -5,6 +5,7 @@ import ProjectCard from '../../components/ProjectCard';
 import { useApp } from '../../context/AppContext';
 import { isPositiveNumber, isRequired, validateFiles } from '../../utils/validation';
 import { PROPERTY_TYPES } from '../../data/options';
+import ApiMyPortfolio from './ApiMyPortfolio';
 
 const blank = { title: '', description: '', propertyType: '', location: '', budget: '', completionDate: '', category: '', styles: '' };
 
@@ -67,6 +68,7 @@ export default function PortfolioPage() {
     <div className="page-shell">
       <PageHeader eyebrow="Selected IDP features" title="Create and manage portfolio" text="Create an IDP with details, assign category/style tags, upload multiple photos, then edit or remove projects." />
       <form className="panel form-card" onSubmit={submit} noValidate>
+        <p className="muted">Demo only: this form and the demo Edit/Remove buttons below change prototype data, not Flask projects.</p>
         <div className="section-heading compact-heading"><div><h2>{editingId ? 'Edit portfolio project' : 'Create portfolio project'}</h2></div>{editingId && <button type="button" className="text-button" onClick={() => { setEditingId(null); setForm(blank); }}>Cancel edit</button>}</div>
         <div className="two-column-form">
           <label>Project title<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /><FieldError message={errors.title} /></label>
@@ -82,6 +84,8 @@ export default function PortfolioPage() {
         <button className="primary-button" type="submit">{editingId ? 'Update project' : 'Create project'}</button>{message && <div className="alert success-alert">{message}</div>}
       </form>
       <div className="section-heading roomy"><div><h2>My portfolio</h2><p className="muted">Each card shows the view counter required by the selected user story.</p></div></div>
+      <ApiMyPortfolio key={user?.id} />
+      <div className="section-heading roomy"><div><h2>Demo projects</h2><p className="muted">Demo only: Edit and Remove affect mock records. They do not update the real portfolio above.</p></div></div>
       <div className="card-grid">{mine.map((project) => <ProjectCard key={project.id} project={project} editable onEdit={edit} onDelete={deletePortfolioProject} />)}</div>
     </div>
   );

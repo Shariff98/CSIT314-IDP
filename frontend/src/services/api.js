@@ -74,6 +74,13 @@ export const flaskApi = {
     return apiRequest(`/idps${query.size ? `?${query}` : ''}`, options);
   },
   getProjectOptions: () => apiRequest('/idps/options'),
+  getMyPortfolio: (params = {}, options = {}) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+    }
+    return apiRequest(`/designer/portfolio${query.size ? `?${query}` : ''}`, options);
+  },
   saveProject: (id) => postJson(`/favourites/projects/${encodeURIComponent(id)}`),
   removeSavedProject: (id) => apiRequest(`/favourites/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   getFavouriteProjects: (params = {}) => {
