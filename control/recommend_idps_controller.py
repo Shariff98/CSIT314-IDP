@@ -33,6 +33,9 @@ STRICT_BANDS = [
     ("Saves you a little", 0.93, 0.97),
     ("Saves you more", None, 0.93),
 ]
+PRICE_STEPS = {"cheaper": 0.8, "pricier": 1.25}
+MAX_SEEN = 60
+START_CHIPS = ["Modern kitchen around $10k", "Bedroom between $8k and $12k", "What can you do?"]
 RANGE_BANDS = ["Lower end of your range", "Middle of your range", "Top of your range"]
 RELAX_NOTES = {
     "style": "I couldn't find enough in that style, so I included other styles.",
@@ -199,7 +202,12 @@ class RecommendIDPsController:
                     previous[field] = [] if field == "styles" else None
                     if field == "styles":
                         previous["exclude_styles"] = []
+            followup = budget_parser.detect_followup(message)
+            new_budget = prefs["budget"]
             prefs = self.merge(previous, prefs)
+            if followup in PRICE_STEPS and new_budget is None and prefs["budget"]:
+                prefs = self.step_budget(prefs, PRICE_STEPS[followup])
+            prefs["seen_ids"] = previous["seen_ids"] if followup == "more" else []
 
         budget = prefs["budget"]
         if budget is None:
@@ -210,6 +218,9 @@ class RecommendIDPsController:
                                 [], [], source, message, prefs, customer_id)
 
         candidates, relaxed, (low, high) = self._find_candidates(prefs)
+        if not candidates and prefs["seen_ids"]:
+            return self._answer("That's everything I have for this search. Try a different budget, room or style.",
+                                [], relaxed, source, message, prefs, customer_id)
         if not candidates:
             return self._answer(f"I couldn't find any published projects near {money(budget)}. "
                                 "Try a different budget or room.", [], relaxed, source, message, prefs, customer_id)
@@ -247,6 +258,25 @@ class RecommendIDPsController:
         return merged
 
     @staticmethod
+    def step_budget(prefs, factor):
+        """"Cheaper" / "a bit more": move the budget (and a range's floor) by factor, to the nearest $100."""
+        def step(amount):
+            return int(round(amount * factor / 100) * 100) if amount else amount
+        return {**prefs, "budget": step(prefs["budget"]), "budget_min": step(prefs["budget_min"])}
+
+    @staticmethod
+    def suggestions(prefs, projects):
+        """Follow-up chips. Each one is plain text the parser understands, so typing it works the same."""
+        if not projects:
+            return [] if prefs.get("budget") or prefs.get("category") else START_CHIPS
+        chips = ["Show more", "Cheaper", "A bit more"]
+        if prefs.get("styles"):
+            chips.append("Any style")
+        if prefs.get("category"):
+            chips.append("Any room")
+        return chips
+
+    @staticmethod
     def ask_budget(prefs):
         wanted = " ".join(filter(None, [", ".join(prefs["styles"]), prefs["category"]]))
         if wanted:
@@ -269,6 +299,8 @@ class RecommendIDPsController:
             return list(dict.fromkeys(by_lower[s.lower()] for s in names if isinstance(s, str) and s.lower() in by_lower))
 
         excluded = known("exclude_styles")
+        seen = prefs.get("seen_ids") if isinstance(prefs.get("seen_ids"), list) else []
+        seen = [n for n in seen if isinstance(n, int) and not isinstance(n, bool)][-MAX_SEEN:]
         try:
             budget_min = int(round(float(prefs.get("budget_min"))))
         except (TypeError, ValueError):
@@ -284,6 +316,7 @@ class RecommendIDPsController:
             "property_type": prefs.get("property_type") if isinstance(prefs.get("property_type"), str) else None,
             "location": prefs.get("location") if isinstance(prefs.get("location"), str) else None,
             "strict_max": bool(prefs.get("strict_max")) or budget_min is not None,
+            "seen_ids": seen,
         }
 
     @staticmethod
@@ -293,7 +326,7 @@ class RecommendIDPsController:
         while True:
             low, high = budget_window(prefs["budget"], prefs["strict_max"], widened, prefs["budget_min"])
             found = [idp for idp in IDP.find_in_budget(low, high, category, styles)
-                     if not set(idp.styles) & set(prefs["exclude_styles"])]
+                     if not set(idp.styles) & set(prefs["exclude_styles"]) and idp.id not in prefs["seen_ids"]]
             if len(found) >= 3:
                 return found, relaxed, (low, high)
             if styles:
@@ -335,4 +368,7 @@ class RecommendIDPsController:
     @staticmethod
     def _answer(reply, projects, relaxed, source, message, prefs, customer_id):
         ChatLog.record(message, prefs, [p["id"] for p in projects], source, customer_id)
-        return {"reply": reply, "projects": projects, "relaxed": relaxed, "source": source, "prefs": prefs}
+        seen = (prefs.get("seen_ids", []) + [p["id"] for p in projects])[-MAX_SEEN:]
+        prefs = {**prefs, "seen_ids": seen}
+        return {"reply": reply, "projects": projects, "relaxed": relaxed, "source": source, "prefs": prefs,
+                "suggestions": RecommendIDPsController.suggestions(prefs, projects)}

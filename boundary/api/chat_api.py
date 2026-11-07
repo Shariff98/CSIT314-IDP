@@ -3,7 +3,9 @@
 Request:  {"message": "modern kitchen around $10k", "history": [{"role": "user", "content": "..."}],
            "context": <the "prefs" from the previous response, optional>}
 Response: 200 {"reply": str, "projects": [card, ...], "relaxed": [str], "source": "llm" | "fallback",
-               "prefs": {"budget", "category", "styles", "property_type", "location", "strict_max"}}
+               "prefs": {"budget", "budget_min", "category", "styles", "exclude_styles", "property_type",
+                         "location", "strict_max", "seen_ids"},
+               "suggestions": [str]}  follow-up chips; each is a message the bot understands
           400 {"error": str}  empty or too long message
           429 {"error": str}  more than CHAT_RATE_LIMIT messages in an hour
 """

@@ -16,7 +16,7 @@ def test_chat_returns_reply_and_projects(client, fake_llm):
     res = client.post("/api/chat", json={"message": "kitchen 10k"})
     assert res.status_code == 200
     body = res.get_json()
-    assert set(body) == {"reply", "projects", "relaxed", "source", "prefs"} and len(body["projects"]) == 3
+    assert set(body) == {"reply", "projects", "relaxed", "source", "prefs", "suggestions"} and len(body["projects"]) == 3
 
 
 @pytest.mark.parametrize("payload", [{}, {"message": ""}, {"message": "   "}, {"message": 42}])

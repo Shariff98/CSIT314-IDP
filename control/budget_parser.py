@@ -46,6 +46,14 @@ INTENTS = {
     "thanks": re.compile(r"\b(thanks|thank you|thx|cheers|appreciate it)\b", re.IGNORECASE),
     "help": re.compile(r"\b(help|what can you do|how does this work|how do you work|who are you)\b", re.IGNORECASE),
 }
+# Follow-ups that only make sense after a search (the chat chips send these words too).
+FOLLOWUPS = {
+    "more": re.compile(r"\b(show (?:me )?more|more options|other options|something else|different ones|see more)\b",
+                       re.IGNORECASE),
+    "cheaper": re.compile(r"\b(cheaper|less expensive|lower (?:the )?budget|spend less|too expensive)\b", re.IGNORECASE),
+    "pricier": re.compile(r"\b(a bit more|pricier|more expensive|higher budget|bigger budget|spend more|stretch)\b",
+                          re.IGNORECASE),
+}
 PROPERTY_WORDS = {"HDB": ["hdb"], "Condo": ["condo", "condominium", "apartment"],
                   "Landed": ["landed", "house", "terrace", "bungalow"], "Commercial": ["commercial", "shop"]}
 
@@ -100,6 +108,14 @@ def parse_range(text):
 def detect_intent(text):
     """"greeting", "thanks" or "help" for small talk, else None."""
     for name, pattern in INTENTS.items():
+        if pattern.search(text or ""):
+            return name
+    return None
+
+
+def detect_followup(text):
+    """"more", "cheaper" or "pricier" for a follow-up to the last search, else None."""
+    for name, pattern in FOLLOWUPS.items():
         if pattern.search(text or ""):
             return name
     return None
