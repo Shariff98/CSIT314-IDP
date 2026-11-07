@@ -24,8 +24,8 @@ def test_parse_budget(text, expected):
 
 def test_parse_finds_category_styles_and_strict():
     prefs = budget_parser.parse("Scandinavian kitchen in my condo, no more than $9,000", CATEGORIES, STYLES)
-    assert prefs == {"budget": 9_000, "category": "Kitchen", "styles": ["Scandinavian"],
-                     "property_type": "Condo", "location": None, "strict_max": True}
+    assert prefs == {"budget": 9_000, "budget_min": None, "category": "Kitchen", "styles": ["Scandinavian"],
+                     "exclude_styles": [], "property_type": "Condo", "location": None, "strict_max": True}
 
 
 def test_parse_synonyms():
