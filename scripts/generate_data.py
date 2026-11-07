@@ -61,6 +61,21 @@ def png(width, height, colour):
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b"")
 
 
+def clustered_budget(rng=random):
+    """Budgets cluster where customers ask, so the budget chatbot has real choices:
+    40% from $8k to $14k, 25% from $14k to $40k, 20% from $40k to $120k, 15% from $5k to $8k."""
+    roll = rng.random()
+    if roll < 0.40:
+        low, high = 8_000, 14_000
+    elif roll < 0.65:
+        low, high = 14_000, 40_000
+    elif roll < 0.85:
+        low, high = 40_000, 120_000
+    else:
+        low, high = 5_000, 8_000
+    return int(round(rng.uniform(low, high), -2))
+
+
 def stamp(moment):
     return moment.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -125,7 +140,7 @@ def main(size=100, db_path=None, upload_dir=None):
         status = random.choice(["Current", "Past", "Past"])
         idp = IDP.create(designer.id, f"{style[0]} {room} #{i + 1}",
                          f"A {style[0].lower()} {room.lower()} renovation with {style[1].lower()} touches.",
-                         room, random.randrange(5000, 120000, 500), style_tags=", ".join(style),
+                         room, clustered_budget(), style_tags=", ".join(style),
                          property_type=random.choice(PROPERTY_TYPES), location=random.choice(LOCATIONS),
                          completion_date=(created + timedelta(days=random.randint(20, 90))).date().isoformat()
                          if status == "Past" else None,
