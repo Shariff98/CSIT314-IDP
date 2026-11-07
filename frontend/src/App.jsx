@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Layout from './components/Layout';
+import ChatWidget from './components/ChatWidget';
 import { useApp } from './context/AppContext';
 import { homeForRole, canAccessPage, initialPage } from './utils/auth';
 
@@ -116,5 +117,13 @@ export default function App() {
     default: content = <LandingPage go={go} openDesigner={openDesigner} openProject={openProject} />;
   }
 
-  return <Layout page={page} go={go}>{content}</Layout>;
+  // Budget Match Assistant: shown to visitors and customers on every page.
+  const showChat = !user || user.role === 'Customer';
+
+  return (
+    <>
+      <Layout page={page} go={go}>{content}</Layout>
+      {showChat && <ChatWidget onOpenProject={openApiProject} />}
+    </>
+  );
 }
