@@ -1,7 +1,9 @@
+import { useState } from 'react';
+import { homeForRole } from '../utils/auth';
 import { useApp } from '../context/AppContext';
 
 const roleMenus = {
-  customer: [
+  Customer: [
     ['customer-home', 'Home'],
     ['customer-idps', 'Browse IDPs'],
     ['customer-designers', 'Designers'],
@@ -10,7 +12,7 @@ const roleMenus = {
     ['customer-consultations', 'Consultations'],
     ['customer-payments', 'Payments'],
   ],
-  designer: [
+  InteriorDesigner: [
     ['designer-dashboard', 'Dashboard'],
     ['designer-company', 'Company Profile'],
     ['designer-portfolio', 'Portfolio'],
@@ -21,32 +23,43 @@ const roleMenus = {
     ['designer-payments', 'Payments'],
     ['designer-reviews', 'Reviews'],
   ],
-  admin: [
+  UserAdmin: [
     ['admin-dashboard', 'Dashboard'],
     ['admin-accounts', 'Accounts'],
     ['admin-verification', 'Verification'],
     ['admin-reports', 'Reports'],
     ['admin-moderation', 'Reviews'],
-    ['admin-categories', 'Categories'],
+
   ],
+  PlatformManager: [['manager-categories', 'Categories']],
 };
 
 export default function Layout({ page, go, children }) {
-  const { user, logout } = useApp();
+  const { user, logout, authLoading, authMessage } = useApp();
+  const [logoutError, setLogoutError] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
   const menu = user ? roleMenus[user.role] || [] : [];
 
-  function handleLogout() {
-    logout();
-    go('landing');
+  async function handleLogout() {
+    setLoggingOut(true);
+    setLogoutError('');
+    try {
+      await logout();
+      go('landing');
+    } catch (error) {
+      setLogoutError(`Could not log out. ${error.message} Please try again.`);
+    } finally {
+      setLoggingOut(false);
+    }
   }
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <button className="brand" onClick={() => go(user ? `${user.role}-${user.role === 'customer' ? 'home' : 'dashboard'}` : 'landing')}>
+        <button className="brand" onClick={() => go(user ? homeForRole[user.role] || 'landing' : 'landing')}>
           RenovationLink
         </button>
-        {user ? (
+        {authLoading ? <span role="status">Checking session...</span> : user ? (
           <>
             <nav className="top-nav" aria-label="Main navigation">
               {menu.map(([key, label]) => (
@@ -56,9 +69,9 @@ export default function Layout({ page, go, children }) {
             <div className="account-box">
               <div>
                 <strong>{user.name}</strong>
-                <small>{user.role === 'designer' ? 'Interior Designer' : user.role === 'admin' ? 'Administrator' : 'Homeowner'}</small>
+                <small>{({ Customer: 'Homeowner', InteriorDesigner: 'Interior Designer', UserAdmin: 'User Administrator', PlatformManager: 'Platform Manager' })[user.role]}</small>
               </div>
-              <button className="secondary-button compact" onClick={handleLogout}>Log out</button>
+              <button className="secondary-button compact" onClick={handleLogout} disabled={loggingOut}>{loggingOut ? 'Logging out...' : 'Log out'}</button>
             </div>
           </>
         ) : (
@@ -68,10 +81,10 @@ export default function Layout({ page, go, children }) {
           </div>
         )}
       </header>
-      <main>{children}</main>
+      <main>{authMessage && <div className="alert" role="status">{authMessage}</div>}{logoutError && <div className="alert error-alert" role="alert">{logoutError}</div>}{children}</main>
       <footer className="footer">
         <strong>RenovationLink</strong>
-        <span>CSIT314 React frontend prototype - Not yet merged with backend</span>
+        <span>CSIT314 Design Match</span>
       </footer>
     </div>
   );

@@ -15,7 +15,7 @@ export default function IDPDetailsPage({ projectId, go, openDesigner }) {
   const project = projects.find((item) => item.id === projectId);
   const designer = project ? designers.find((item) => item.id === project.designerId) : null;
   const isOwner =
-    user?.role === 'designer' &&
+    user?.role === 'InteriorDesigner' &&
     user.designerId === project?.designerId;
   const [editingTags, setEditingTags] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(project?.category || '');
@@ -172,7 +172,7 @@ export default function IDPDetailsPage({ projectId, go, openDesigner }) {
                 Manage full IDP details
               </button>
             </div>
-          ) : user?.role === 'customer' ? (
+          ) : user?.role === 'Customer' ? (
             <button
               className="primary-button full-width"
               onClick={() => toggleFavouriteProject(project.id)}
