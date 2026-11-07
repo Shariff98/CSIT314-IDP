@@ -37,6 +37,10 @@ COMPARE_WORDS = re.compile(r"\b(compare|comparison|side by side|which is better|
 PRICE_STEPS = {"cheaper": 0.8, "pricier": 1.25}
 MAX_SEEN = 60
 START_CHIPS = ["Modern kitchen around $10k", "Bedroom between $8k and $12k", "What can you do?"]
+# Stand-in pictures in frontend/public for projects with no uploaded photo.
+PLACEHOLDERS = {"Kitchen": "/project-kitchen.svg", "Bedroom": "/project-bedroom.svg", "Kids Room": "/project-bedroom.svg",
+                "Living Room": "/project-living.svg", "Dining Room": "/project-living.svg",
+                "Office": "/project-office.svg", "Study": "/project-office.svg"}
 RANGE_BANDS = ["Lower end of your range", "Middle of your range", "Top of your range"]
 RELAX_NOTES = {
     "style": "I couldn't find enough in that style, so I included other styles.",
@@ -101,6 +105,25 @@ def preference_match(idp, prefs):
             wanted += 1
             matched += (getattr(idp, field) or "").lower() == prefs[field].lower()
     return matched / wanted if wanted else 1.0
+
+
+def match_reasons(idp, prefs):
+    """Short "why this matches" facts for a card, e.g. ["$800 under budget", "Modern", "Kitchen"]."""
+    budget, reasons = prefs["budget"], []
+    if prefs.get("budget_min"):
+        reasons.append("Within your range" if prefs["budget_min"] <= idp.budget <= budget else "Just outside your range")
+    elif idp.budget == budget:
+        reasons.append("On budget")
+    else:
+        reasons.append(f"{money(abs(idp.budget - budget))} {'under' if idp.budget < budget else 'over'} budget")
+    wanted = {s.lower() for s in prefs.get("styles") or []}
+    reasons += [s for s in idp.styles if s.lower() in wanted]
+    if prefs.get("category") == idp.category:
+        reasons.append(idp.category)
+    for field in ("property_type", "location"):
+        if prefs.get(field) and (getattr(idp, field) or "").lower() == prefs[field].lower():
+            reasons.append(getattr(idp, field))
+    return reasons
 
 
 def score_candidates(candidates, prefs, low, high):
@@ -231,7 +254,7 @@ class RecommendIDPsController:
 
         picks = pick_three(score_candidates(candidates, prefs, low, high), budget, prefs["strict_max"],
                            prefs["budget_min"])
-        projects = [self._card(idp, score, label) for idp, score, label in picks]
+        projects = [self._card(idp, score, label, prefs) for idp, score, label in picks]
 
         reply = None
         if source == "llm":
@@ -395,13 +418,14 @@ class RecommendIDPsController:
                 return found, relaxed, (low, high)
 
     @staticmethod
-    def _card(idp, score, label):
+    def _card(idp, score, label, prefs):
         """What the React card shows. Built only from database data, never from LLM text."""
-        slug = idp.category.lower().split()[0]
+        cover = idp.cover_photo()
+        image = f"/uploads/{cover.filename}" if cover else PLACEHOLDERS.get(idp.category, "/project-detail.svg")
         return {"id": idp.id, "title": idp.title, "budget": idp.budget, "category": idp.category,
                 "styles": idp.styles, "property_type": idp.property_type, "location": idp.location,
                 "designer": idp.designer_name or "", "label": label, "score": score,
-                "url": f"/idp/{idp.id}", "image": f"/project-{slug}.svg"}
+                "reasons": match_reasons(idp, prefs), "url": f"/idp/{idp.id}", "image": image}
 
     @staticmethod
     def remove_unknown_ids(reply, allowed_ids):
