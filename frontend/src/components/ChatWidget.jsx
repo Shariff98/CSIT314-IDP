@@ -5,6 +5,7 @@
 // given, clicking a card opens that project inside the React app.
 import { useEffect, useRef, useState } from "react";
 import "./ChatWidget.css";
+import { describePrefs } from "../utils/chat.js";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 const MAX_LENGTH = 500;
@@ -19,6 +20,8 @@ export default function ChatWidget({ onOpenProject }) {
   const [messages, setMessages] = useState([GREETING]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  // What the server understood so far; sent back so the next message builds on it.
+  const [context, setContext] = useState(null);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -40,7 +43,7 @@ export default function ChatWidget({ onOpenProject }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ message, history }),
+        body: JSON.stringify({ message, history, context }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong.");
@@ -48,6 +51,7 @@ export default function ChatWidget({ onOpenProject }) {
         ...prev,
         { role: "assistant", content: data.reply, projects: data.projects, fallback: data.source === "fallback" },
       ]);
+      setContext(data.prefs ?? null);
     } catch (err) {
       const content = err instanceof TypeError ? "Can't reach the server. Please try again." : err.message;
       setMessages((prev) => [...prev, { role: "assistant", content, error: true }]);
@@ -70,6 +74,12 @@ export default function ChatWidget({ onOpenProject }) {
         <span>Budget Match Assistant</span>
         <button onClick={() => setOpen(false)} aria-label="Close">×</button>
       </header>
+      {describePrefs(context) && (
+        <div className="cw-memory">
+          <span>Looking for: {describePrefs(context)}</span>
+          <button type="button" onClick={() => setContext(null)}>Start over</button>
+        </div>
+      )}
 
       <div className="cw-messages">
         {messages.map((m, i) => (
