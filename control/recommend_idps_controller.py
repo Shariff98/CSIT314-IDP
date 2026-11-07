@@ -38,6 +38,10 @@ RELAX_NOTES = {
     "category": "I couldn't find enough in that category, so I included other rooms.",
     "budget_window": "I widened the price range a little to find enough options.",
 }
+MEMORY_FIELDS = ("budget", "category", "styles", "property_type", "location")
+FORGET_WORDS = {"styles": re.compile(r"\bany (?:style|look)\b", re.IGNORECASE),
+                "category": re.compile(r"\bany (?:room|category|space)\b", re.IGNORECASE)}
+RESET_WORDS = re.compile(r"\b(start over|start again|new search|reset|forget (?:it|that|everything))\b", re.IGNORECASE)
 
 
 class LLMUnavailable(Exception):
@@ -137,8 +141,13 @@ class RecommendIDPsController:
     def __init__(self, llm_gateway):
         self.llm = llm_gateway
 
-    def recommend(self, message, history=None, customer_id=None):
-        """Returns {"reply", "projects", "relaxed", "source"}. Raises ValueError for an empty message."""
+    def recommend(self, message, history=None, customer_id=None, context=None):
+        """Returns {"reply", "projects", "relaxed", "source", "prefs"}. Raises ValueError for an empty message.
+
+        context is the "prefs" the previous answer returned. Anything this message
+        does not mention is carried over from it, so "what about bathrooms?" keeps
+        the budget and "make it $12k" keeps the room, with or without the LLM.
+        """
         message = (message or "").strip()
         if not message:
             raise ValueError("Please type a message.")
@@ -150,11 +159,16 @@ class RecommendIDPsController:
         except LLMUnavailable:
             prefs, source = budget_parser.parse(message, categories, styles), "fallback"
         prefs = self._clean(prefs, message, categories, styles)
+        if context and not RESET_WORDS.search(message):
+            previous = self._clean(context, "", categories, styles)
+            for field, words in FORGET_WORDS.items():
+                if words.search(message):
+                    previous[field] = [] if field == "styles" else None
+            prefs = self.merge(previous, prefs)
 
         budget = prefs["budget"]
         if budget is None:
-            return self._answer("What budget do you have in mind? For example: \"kitchen, around $10,000\".",
-                                [], [], source, message, prefs, customer_id)
+            return self._answer(self.ask_budget(prefs), [], [], source, message, prefs, customer_id)
         if not MIN_BUDGET <= budget <= MAX_BUDGET:
             return self._answer(f"That budget doesn't look right. Please give an amount between "
                                 f"{money(MIN_BUDGET)} and {money(MAX_BUDGET)}.",
@@ -180,6 +194,23 @@ class RecommendIDPsController:
         return self._answer(reply, projects, relaxed, source, message, prefs, customer_id)
 
     # ---------- steps ----------
+    @staticmethod
+    def merge(previous, new):
+        """New values win; anything the new message left empty comes from the previous turn.
+
+        strict_max belongs to the budget: it only carries over when the budget does.
+        """
+        merged = {f: new[f] or previous[f] for f in MEMORY_FIELDS}
+        merged["strict_max"] = new["strict_max"] if new["budget"] is not None else previous["strict_max"]
+        return merged
+
+    @staticmethod
+    def ask_budget(prefs):
+        wanted = " ".join(filter(None, [", ".join(prefs["styles"]), prefs["category"]]))
+        if wanted:
+            return f"Sounds good, a {wanted.lower()} project. What budget do you have in mind? For example: \"around $10,000\"."
+        return "What budget do you have in mind? For example: \"kitchen, around $10,000\"."
+
     @staticmethod
     def _clean(prefs, message, categories, styles):
         """Never trust the LLM's JSON: check every field against real data."""
@@ -247,4 +278,4 @@ class RecommendIDPsController:
     @staticmethod
     def _answer(reply, projects, relaxed, source, message, prefs, customer_id):
         ChatLog.record(message, prefs, [p["id"] for p in projects], source, customer_id)
-        return {"reply": reply, "projects": projects, "relaxed": relaxed, "source": source}
+        return {"reply": reply, "projects": projects, "relaxed": relaxed, "source": source, "prefs": prefs}

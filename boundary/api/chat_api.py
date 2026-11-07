@@ -1,7 +1,9 @@
 """Boundary (API): POST /api/chat, called by the React ChatWidget.
 
-Request:  {"message": "modern kitchen around $10k", "history": [{"role": "user", "content": "..."}]}
-Response: 200 {"reply": str, "projects": [card, ...], "relaxed": [str], "source": "llm" | "fallback"}
+Request:  {"message": "modern kitchen around $10k", "history": [{"role": "user", "content": "..."}],
+           "context": <the "prefs" from the previous response, optional>}
+Response: 200 {"reply": str, "projects": [card, ...], "relaxed": [str], "source": "llm" | "fallback",
+               "prefs": {"budget", "category", "styles", "property_type", "location", "strict_max"}}
           400 {"error": str}  empty or too long message
           429 {"error": str}  more than CHAT_RATE_LIMIT messages in an hour
 """
@@ -29,6 +31,7 @@ def chat():
     if len(message) > MAX_MESSAGE_LENGTH:
         return jsonify(error=f"Please keep your message under {MAX_MESSAGE_LENGTH} characters."), 400
     history = data.get("history") if isinstance(data.get("history"), list) else []
+    context = data.get("context") if isinstance(data.get("context"), dict) else None
 
     user_id = session.get("user_id")
     client = f"user:{user_id}" if user_id else f"ip:{request.headers.get('X-Forwarded-For', request.remote_addr)}"
@@ -37,7 +40,7 @@ def chat():
 
     controller = RecommendIDPsController(current_app.config["LLM_GATEWAY"])
     try:
-        result = controller.recommend(message, history, customer_id=user_id)
+        result = controller.recommend(message, history, customer_id=user_id, context=context)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     return jsonify(result)

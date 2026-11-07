@@ -78,7 +78,7 @@ def test_reply_failure_still_returns_projects(kitchens):
 
 def test_no_budget_asks_a_question(kitchens):
     result = recommend({"budget": None, "category": "Kitchen"}, message="I want a new kitchen")
-    assert result["projects"] == [] and result["reply"].startswith("What budget")
+    assert result["projects"] == [] and "What budget" in result["reply"]
 
 
 def test_invalid_budget_asks_again(kitchens):
