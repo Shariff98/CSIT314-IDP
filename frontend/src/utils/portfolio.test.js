@@ -3,6 +3,108 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { flaskApi } from '../services/api.js';
 import { projectCardData, pageRequest } from './projects.js';
+import { createPortfolioPayload, createPortfolioMutation, portfolioOptionalFieldErrors } from './createPortfolio.js';
+
+const createForm = { title: 'Real draft', description: 'Warm kitchen', category: 'Kitchen', budget: '12000',
+  propertyType: 'Condo', location: 'Tampines', completionDate: '2026-01-01', styles: 'Modern, Japandi' };
+
+test('real Create accepts an empty completion date and maps it to null', () => {
+  const form = { ...createForm, completionDate: '' };
+  assert.deepEqual(portfolioOptionalFieldErrors(form, false), {});
+  assert.equal(createPortfolioPayload(form).completion_date, null);
+  assert.deepEqual(portfolioOptionalFieldErrors(form, true), { completionDate: 'Completion date is required.' });
+});
+
+test('real Create accepts empty style tags and maps them to empty text', () => {
+  const form = { ...createForm, styles: '' };
+  assert.deepEqual(portfolioOptionalFieldErrors(form, false), {});
+  assert.equal(createPortfolioPayload(form).style_tags, '');
+  assert.deepEqual(portfolioOptionalFieldErrors(form, true), { styles: 'Add at least one style tag.' });
+});
+
+test('both optional fields can be empty together; demo Edit keeps its required validation', () => {
+  const form = { ...createForm, completionDate: '', styles: '' };
+  assert.deepEqual(portfolioOptionalFieldErrors(form, false), {});
+  assert.equal(createPortfolioPayload(form).completion_date, null);
+  assert.equal(createPortfolioPayload(form).style_tags, '');
+  assert.deepEqual(portfolioOptionalFieldErrors(form, true), {
+    completionDate: 'Completion date is required.', styles: 'Add at least one style tag.',
+  });
+});
+
+test('create maps metadata only and always requests a draft, ignoring mock IDs and photo paths', () => {
+  const form = { ...createForm, designerId: 101, id: 201, views: 100, photos: ['/project-living.svg'], publish: true };
+  const before = structuredClone(form);
+  const payload = createPortfolioPayload(form);
+  assert.deepEqual(payload, { title: 'Real draft', description: 'Warm kitchen', category: 'Kitchen', budget: 12000,
+    property_type: 'Condo', location: 'Tampines', completion_date: '2026-01-01', style_tags: 'Modern, Japandi', publish: false });
+  assert.deepEqual(form, before);
+  for (const budget of ['0', '-1', '1.5', 'abc', '', 'Infinity']) {
+    assert.throws(() => createPortfolioPayload({ ...form, budget }), /positive whole number/);
+  }
+});
+
+test('creation blocks duplicate submits, confirms server draft before success, and never mutates the form', async () => {
+  let resolve;
+  let count = 0;
+  const create = createPortfolioMutation({ createPortfolioProject: payload => {
+    count++;
+    assert.equal(payload.publish, false);
+    assert.equal(Object.hasOwn(payload, 'photos'), false);
+    return new Promise(done => { resolve = done; });
+  } });
+  const form = { ...createForm };
+  let confirmed = null;
+  const pending = create(form).then(result => { confirmed = result; });
+  assert.equal(confirmed, null);
+  assert.equal(await create(form), null);
+  assert.equal(count, 1);
+  resolve({ data: { project: { id: 77, published: false, photos: [] } } });
+  await pending;
+  assert.equal(confirmed.id, 77);
+  assert.deepEqual(form, createForm);
+});
+
+test('failed creation preserves values and releases the submission lock for retry', async () => {
+  let fails = true;
+  const form = { ...createForm };
+  const create = createPortfolioMutation({ createPortfolioProject: async () => {
+    if (fails) throw new Error('Offline');
+    return { data: { project: { id: 5, published: false } } };
+  } });
+  await assert.rejects(create(form), /Offline/);
+  assert.deepEqual(form, createForm);
+  fails = false;
+  assert.equal((await create(form)).id, 5);
+  const wrong = createPortfolioMutation({ createPortfolioProject: async () => ({ data: { project: { id: 5, published: true } } }) });
+  await assert.rejects(wrong(form), /did not confirm draft creation/);
+});
+
+test('real create uses JSON and server IDs; refreshing the portfolio retrieves the new draft', async t => {
+  const records = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, '/api/designer/portfolio');
+    assert.equal(options.credentials, 'include');
+    let data;
+    if (options.method === 'POST') {
+      assert.equal(options.headers.get('Content-Type'), 'application/json');
+      const payload = JSON.parse(options.body);
+      assert.equal(Object.hasOwn(payload, 'photos'), false);
+      const project = { id: 700, designer_id: 8, title: payload.title, published: payload.publish, photos: [] };
+      records.push(project);
+      data = { project };
+    } else data = { items: records, total: records.length };
+    return new Response(JSON.stringify({ data }), { status: options.method === 'POST' ? 201 : 200,
+      headers: { 'Content-Type': 'application/json' } });
+  });
+  assert.equal((await flaskApi.getMyPortfolio()).data.total, 0);
+  const created = await createPortfolioMutation()(createForm);
+  assert.equal(created.id, 700);
+  const refreshed = await flaskApi.getMyPortfolio();
+  assert.equal(refreshed.data.total, 1);
+  assert.equal(refreshed.data.items[0].published, false);
+  assert.deepEqual(refreshed.data.items[0].photos, []);
+});
 
 test('owner portfolio request sends only filter parameters and preserves cookies and cancellation', async t => {
   const controller = new AbortController();
@@ -88,5 +190,8 @@ test('portfolio rendering has loading/empty/error states and real cards have no 
     assert.match(page, /Project title/);
     assert.match(page, /Demo projects/);
     assert.match(page, /Loading your portfolio/);
+    assert.match(page, /Photo uploads are not connected yet. You can create a project without photos./);
+    assert.match(page, /Create saves a real Flask draft without photos/);
+    assert.match(page, /type="file"[^>]*disabled/);
   } finally { await server.close(); }
 });

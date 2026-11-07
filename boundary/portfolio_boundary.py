@@ -1,6 +1,8 @@
 """Boundary for the designer's own portfolio: MyIDPsPage (US-16, US-03), MyIDPDetailPage (US-27),
 EditIDPPage (US-04, US-26) and the buttons for delete (US-05), status (US-06), publish (US-33)
 and photos (US-55)."""
+from functools import wraps
+
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, session, url_for
 
 from boundary.common import current_user_id, role_required, uploaded_file
@@ -11,6 +13,7 @@ from control.search_user_account_controller import SearchUserAccountController
 from control.search_user_profile_controller import SearchUserProfileController
 from control.search_category_controller import SearchCategoryController
 from control.assign_idp_tags_controller import AssignIDPTagsController
+from control.create_idp_controller import CreateIDPController
 from control.delete_idp_controller import DeleteIDPController
 from control.list_my_idps_controller import ListMyIDPsController
 from control.mark_idp_status_controller import MarkIDPStatusController
@@ -26,17 +29,25 @@ designer_only = role_required("InteriorDesigner")
 SEARCH_FIELDS = ("q", "status", "category", "date_from", "date_to")
 
 
+def api_designer_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        account_id = current_user_id()
+        account = SearchUserAccountController().view(account_id) if isinstance(account_id, int) else None
+        profiles = SearchUserProfileController().search() if account else []
+        profile = next((profile for profile in profiles if profile.name == account.role), None) if account else None
+        if account is None or account.status != "Active" or profile is None or profile.status != "Active":
+            LogoutController().logout(session)
+            return jsonify(error={"code": "authentication_required", "message": "Please log in with an active account."}), 401
+        if account.role != "InteriorDesigner":
+            return jsonify(error={"code": "forbidden", "message": "An InteriorDesigner account is required."}), 403
+        return view(*args, **kwargs)
+    return wrapped
+
+
 @api_bp.route("/portfolio", methods=["GET"])
+@api_designer_required
 def api_my_portfolio():
-    account_id = current_user_id()
-    account = SearchUserAccountController().view(account_id) if isinstance(account_id, int) else None
-    profiles = SearchUserProfileController().search() if account else []
-    profile = next((profile for profile in profiles if profile.name == account.role), None) if account else None
-    if account is None or account.status != "Active" or profile is None or profile.status != "Active":
-        LogoutController().logout(session)
-        return jsonify(error={"code": "authentication_required", "message": "Please log in with an active account."}), 401
-    if account.role != "InteriorDesigner":
-        return jsonify(error={"code": "forbidden", "message": "An InteriorDesigner account is required."}), 403
     args = request.args
     try:
         category = args.get("category")
@@ -44,12 +55,46 @@ def api_my_portfolio():
         if category and not any(row["category"].name == category for row in SearchCategoryController().search()):
             raise ValueError("Unknown category filter")
         if any(args.get(field) for field in SEARCH_FIELDS):
-            projects = SearchMyIDPsController().search(account.id, *(args.get(field) for field in SEARCH_FIELDS))
+            projects = SearchMyIDPsController().search(current_user_id(), *(args.get(field) for field in SEARCH_FIELDS))
         else:
-            projects = ListMyIDPsController().list_idps(account.id)
+            projects = ListMyIDPsController().list_idps(current_user_id())
     except ValueError as error:
         return jsonify(error={"code": "invalid_request", "message": str(error)}), 400
     return jsonify(data={"items": [project_json(project) for project in projects], "total": len(projects)})
+
+
+@api_bp.route("/portfolio", methods=["POST"])
+@api_designer_required
+def api_create_portfolio():
+    try:
+        payload = request.get_json(silent=True) if request.is_json else None
+        if not isinstance(payload, dict):
+            raise ValueError("Request body must be a JSON object.")
+        allowed = {"title", "description", "category", "budget", "property_type", "location",
+                   "completion_date", "style_tags", "publish"}
+        if set(payload) - allowed:
+            raise ValueError("Only project metadata fields are accepted; ownership and generated fields cannot be supplied.")
+        for field in ("title", "description", "category"):
+            if not isinstance(payload.get(field), str) or not payload[field].strip():
+                raise ValueError(f"{field} must be a nonempty string")
+        for field in ("property_type", "location", "style_tags"):
+            if field in payload and not isinstance(payload[field], str):
+                raise ValueError(f"{field} must be a string")
+        if payload.get("completion_date") is not None and not isinstance(payload["completion_date"], str):
+            raise ValueError("completion_date must be a date string")
+        if type(payload.get("budget")) is not int:
+            raise ValueError("Budget must be a positive whole number")
+        if payload["budget"] > 9223372036854775807:
+            raise ValueError("Budget is too large")
+        if type(payload.get("publish", False)) is not bool:
+            raise ValueError("publish must be a JSON boolean")
+        project = CreateIDPController().create_idp(
+            current_user_id(), payload["title"], payload["description"], payload["category"], payload["budget"],
+            payload.get("property_type", ""), payload.get("location", ""), payload.get("completion_date"),
+            payload.get("style_tags", ""), publish=payload.get("publish", False))
+    except ValueError as error:
+        return jsonify(error={"code": "invalid_request", "message": str(error)}), 400
+    return jsonify(data={"project": project_json(project)}), 201
 
 
 @bp.route("/idps")

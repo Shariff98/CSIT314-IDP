@@ -74,6 +74,7 @@ export const flaskApi = {
     return apiRequest(`/idps${query.size ? `?${query}` : ''}`, options);
   },
   getProjectOptions: () => apiRequest('/idps/options'),
+  createPortfolioProject: (payload) => postJson('/designer/portfolio', payload),
   getMyPortfolio: (params = {}, options = {}) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {

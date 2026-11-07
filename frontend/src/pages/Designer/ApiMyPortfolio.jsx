@@ -3,7 +3,7 @@ import ProjectCard from '../../components/ProjectCard';
 import { flaskApi } from '../../services/api';
 import { projectCardData, pageRequest } from '../../utils/projects';
 
-export default function ApiMyPortfolio() {
+export default function ApiMyPortfolio({ refreshToken = 0 }) {
   const [result, setResult] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -19,7 +19,7 @@ export default function ApiMyPortfolio() {
         : error.status === 403 ? 'An InteriorDesigner account is required to view this portfolio.' : error.message),
       settled: () => setLoading(false),
     });
-  }, [retry]);
+  }, [retry, refreshToken]);
 
   return <PortfolioResults result={result} loading={loading} error={error} onRetry={() => setRetry(value => value + 1)} />;
 }
@@ -29,7 +29,7 @@ export function PortfolioResults({ result, loading, error, onRetry }) {
   if (error) return <div className="panel form-card alert error-alert" role="alert"><p>{error}</p>
     <button className="secondary-button" onClick={onRetry}>Retry portfolio</button></div>;
   if (!result.items.length) return <div className="empty-state panel"><h3>No portfolio projects yet</h3>
-    <p>Your real Flask projects will appear here. The demo form does not create real projects yet.</p></div>;
+    <p>Your Flask projects will appear here after you create one.</p></div>;
   return <div>
     <p className="muted">{result.total} project(s) / read-only</p>
     <div className="card-grid">{result.items.map(project => <div key={`api-portfolio-${project.id}`}>
