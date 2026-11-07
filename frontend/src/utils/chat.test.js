@@ -12,3 +12,10 @@ test('describePrefs is empty when nothing is remembered', () => {
   assert.equal(describePrefs(null), '');
   assert.equal(describePrefs({ budget: null, category: null, styles: [] }), '');
 });
+
+test('describePrefs shows budget ranges and excluded styles', () => {
+  assert.equal(describePrefs({ budget: 12000, budget_min: 8000, strict_max: true, category: 'Kitchen' }),
+    'Kitchen · $8,000–$12,000');
+  assert.equal(describePrefs({ budget: 10000, styles: ['Modern'], exclude_styles: ['Industrial', 'Rustic'] }),
+    'Modern · around $10,000 · not Industrial, Rustic');
+});
