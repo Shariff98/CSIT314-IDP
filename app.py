@@ -22,6 +22,7 @@ def create_app(db_path=None, upload_dir=None):
     db.init_db()
     for module in BLUEPRINTS:
         app.register_blueprint(module.bp)
+    app.register_blueprint(portfolio_boundary.api_bp)
 
     @app.errorhandler(404)
     def not_found(_error):
