@@ -91,7 +91,7 @@ export default function App() {
     case 'customer-designers': content = <DesignersPage openDesigner={openDesigner} openProject={openProject} />; break;
     case 'customer-idps': content = <IDPsPage openApiProject={openApiProject} />; break;
     case 'customer-requirements': content = <RequirementsPage />; break;
-    case 'customer-favourites': content = <FavouritesPage openDesigner={openDesigner} openProject={openProject} />; break;
+    case 'customer-favourites': content = <FavouritesPage openDesigner={openDesigner} openApiProject={openApiProject} />; break;
     case 'customer-consultations': content = <CustomerConsultationsPage />; break;
     case 'customer-payments': content = <CustomerPaymentsPage />; break;
 
