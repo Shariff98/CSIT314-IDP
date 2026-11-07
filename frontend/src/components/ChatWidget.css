@@ -38,3 +38,13 @@
 .cw-chip { border: 1px solid #2f6fed; background: #fff; color: #2f6fed; border-radius: 999px; padding: 4px 10px;
   font-size: 13px; cursor: pointer; }
 .cw-chip:hover, .cw-chip:focus-visible { background: #2f6fed; color: #fff; }
+.cw-compare { overflow-x: auto; margin-top: 8px; border: 1px solid #dde1e6; border-radius: 8px; }
+.cw-compare table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.cw-compare th, .cw-compare td { padding: 4px 6px; text-align: left; vertical-align: top; border-bottom: 1px solid #eef0f3; }
+.cw-compare thead th { background: #f5f8ff; }
+.cw-compare thead a { color: #2f6fed; text-decoration: none; font-weight: 600; }
+.cw-compare tbody th { color: #666; font-weight: 500; white-space: nowrap; }
+.cw-compare tbody tr:last-child > * { border-bottom: none; }
+.cw-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.cw-compare table { min-width: 0; }
+.cw-compare th { text-transform: none; letter-spacing: normal; font-size: 12px; }
