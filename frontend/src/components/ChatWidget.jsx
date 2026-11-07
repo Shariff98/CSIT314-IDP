@@ -5,7 +5,7 @@
 // given, clicking a card opens that project inside the React app.
 import { useEffect, useRef, useState } from "react";
 import "./ChatWidget.css";
-import { describePrefs } from "../utils/chat.js";
+import { describePrefs, loadChat, saveChat } from "../utils/chat.js";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 const MAX_LENGTH = 500;
@@ -13,21 +13,52 @@ const money = (n) => "$" + Number(n).toLocaleString();
 const signedMoney = (n) => (n === 0 ? "on budget" : `${n > 0 ? "+" : "−"}${money(Math.abs(n))}`);
 const GREETING = {
   role: "assistant",
+  greeting: true,
   content: 'Hi! Tell me about your project and budget, for example "modern kitchen around $10,000".',
 };
 
+function sessionStorageOrNull() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null; // blocked storage (private mode, sandboxed frame)
+  }
+}
+
 export default function ChatWidget({ onOpenProject }) {
+  const saved = useRef(loadChat(sessionStorageOrNull())).current;
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([GREETING]);
+  const [messages, setMessages] = useState(saved?.messages ?? [GREETING]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   // What the server understood so far; sent back so the next message builds on it.
-  const [context, setContext] = useState(null);
+  const [context, setContext] = useState(saved?.context ?? null);
   const endRef = useRef(null);
+  const inputRef = useRef(null);
+  const launcherRef = useRef(null);
+  const wasOpen = useRef(false);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // Keep the conversation for this browser tab, so a reload or page change doesn't lose it.
+  useEffect(() => {
+    saveChat(sessionStorageOrNull(), { messages, context });
+  }, [messages, context]);
+
+  // Focus the box when the chat opens, and give focus back to the launcher when it closes.
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+    else if (wasOpen.current) launcherRef.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
+
+  function startOver() {
+    setContext(null);
+    setMessages([GREETING]);
+    inputRef.current?.focus();
+  }
 
   function send(e) {
     e.preventDefault();
@@ -38,7 +69,7 @@ export default function ChatWidget({ onOpenProject }) {
   async function ask(message) {
     if (!message || loading) return;
     const history = messages
-      .filter((m) => m !== GREETING && !m.error)
+      .filter((m) => !m.greeting && !m.error)
       .map(({ role, content }) => ({ role, content }));
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     setText("");
@@ -77,14 +108,19 @@ export default function ChatWidget({ onOpenProject }) {
 
   if (!open) {
     return (
-      <button className="cw-launcher" onClick={() => setOpen(true)} aria-label="Open budget assistant">
+      <button ref={launcherRef} className="cw-launcher" onClick={() => setOpen(true)} aria-label="Open budget assistant">
         💬
       </button>
     );
   }
 
   return (
-    <div className="cw-panel" role="dialog" aria-label="Budget Match Assistant">
+    <div
+      className="cw-panel"
+      role="dialog"
+      aria-label="Budget Match Assistant"
+      onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+    >
       <header className="cw-header">
         <span>Budget Match Assistant</span>
         <button onClick={() => setOpen(false)} aria-label="Close">×</button>
@@ -92,11 +128,11 @@ export default function ChatWidget({ onOpenProject }) {
       {describePrefs(context) && (
         <div className="cw-memory">
           <span>Looking for: {describePrefs(context)}</span>
-          <button type="button" onClick={() => setContext(null)}>Start over</button>
+          <button type="button" onClick={startOver}>Start over</button>
         </div>
       )}
 
-      <div className="cw-messages">
+      <div className="cw-messages" aria-live="polite">
         {messages.map((m, i) => (
           <div key={i} className={`cw-msg cw-${m.role}${m.error ? " cw-error" : ""}`}>
             <p>{m.content}</p>
@@ -117,6 +153,11 @@ export default function ChatWidget({ onOpenProject }) {
                     <strong>{p.title}</strong>
                     <span>{money(p.budget)} · {p.category}</span>
                     <small>{p.designer}</small>
+                    {p.reasons?.length > 0 && (
+                      <span className="cw-reasons" aria-label="Why this matches">
+                        {p.reasons.map((r) => <span key={r}>{r}</span>)}
+                      </span>
+                    )}
                   </a>
                 ))}
               </div>
@@ -136,6 +177,7 @@ export default function ChatWidget({ onOpenProject }) {
 
       <form className="cw-form" onSubmit={send}>
         <input
+          ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           maxLength={MAX_LENGTH}
