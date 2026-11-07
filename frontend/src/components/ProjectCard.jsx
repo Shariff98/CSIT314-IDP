@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 export default function ProjectCard({ project, onView, editable = false, onEdit, onDelete, showSave = true }) {
   const { designers, favouriteProjectIds, toggleFavouriteProject } = useApp();
   const designer = designers.find((item) => item.id === project.designerId);
+  const companyName = Object.hasOwn(project, 'companyName') ? project.companyName : designer?.companyName;
   const saved = favouriteProjectIds.includes(project.id);
 
   return (
@@ -11,7 +12,7 @@ export default function ProjectCard({ project, onView, editable = false, onEdit,
       <div className="card-body">
         <div className="card-kicker">{project.category} · {project.propertyType}</div>
         <h3>{project.title}</h3>
-        {designer && <p className="muted">by {designer.companyName}</p>}
+        {companyName && <p className="muted">by {companyName}</p>}
         <div className="tag-row">{project.styles.map((style) => <span className="tag" key={style}>{style}</span>)}</div>
         <p className="line-clamp">{project.description}</p>
         <div className="project-meta">
