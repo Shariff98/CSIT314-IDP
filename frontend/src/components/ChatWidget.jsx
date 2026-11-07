@@ -28,9 +28,13 @@ export default function ChatWidget({ onOpenProject }) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  async function send(e) {
+  function send(e) {
     e.preventDefault();
-    const message = text.trim();
+    ask(text.trim());
+  }
+
+  // Sends one message: typed in the box, or a follow-up chip.
+  async function ask(message) {
     if (!message || loading) return;
     const history = messages
       .filter((m) => m !== GREETING && !m.error)
@@ -49,7 +53,10 @@ export default function ChatWidget({ onOpenProject }) {
       if (!res.ok) throw new Error(data.error || "Something went wrong.");
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.reply, projects: data.projects, fallback: data.source === "fallback" },
+        {
+          role: "assistant", content: data.reply, projects: data.projects,
+          suggestions: data.suggestions, fallback: data.source === "fallback",
+        },
       ]);
       setContext(data.prefs ?? null);
     } catch (err) {
@@ -112,6 +119,13 @@ export default function ChatWidget({ onOpenProject }) {
             )}
           </div>
         ))}
+        {!loading && messages.at(-1)?.suggestions?.length > 0 && (
+          <div className="cw-chips" aria-label="Suggested replies">
+            {messages.at(-1).suggestions.map((chip) => (
+              <button key={chip} type="button" className="cw-chip" onClick={() => ask(chip)}>{chip}</button>
+            ))}
+          </div>
+        )}
         {loading && <div className="cw-msg cw-assistant cw-typing">Thinking…</div>}
         <div ref={endRef} />
       </div>
