@@ -8,16 +8,16 @@ using a strict **boundary-control-entity (b-c-e)** design so the code matches th
 | --- | --- |
 | User stories implemented | **60 of 60** (one control class per story) |
 | Detailed use cases (diagrammed) | **12**, two per member, marked ★ below |
-| Unit tests | **224 passing**, 92% line coverage of control, entity and boundary |
+| Tests | **505 Python tests and 54 frontend tests passed** during deployment validation |
 | Test data | 202 accounts, 100 companies, 210 team members, 300 projects with photos, 2,600+ views, 260+ favourites |
-| CI/CD | GitHub Actions runs tests + the data generator on every push; `main` deploys to Render |
+| CI/CD | GitHub Actions validates pull requests and pushes to `main`; optional Render deploy hook |
 
 ## 1. Stack
 
 | Layer | Choice |
 | --- | --- |
 | Backend | Python 3.12, Flask 3 (object-oriented: every b-c-e element is a class or a module of routes) |
-| Frontend | Jinja HTML templates + Bootstrap 5 |
+| Frontend | React + Vite; existing Jinja HTML pages remain available |
 | Database | SQLite (one file, no server) |
 | Tests | pytest + pytest-cov |
 | CI/CD | GitHub Actions + Render |
@@ -248,22 +248,54 @@ and screenshot both runs. The commit history is the TDD evidence.
 
 ## 8. CI/CD
 
-`.github/workflows/ci.yml` runs on every push and pull request:
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main`:
 
 1. installs the requirements,
 2. runs all tests with a coverage report,
 3. runs `generate_data.py --size 20` to prove the demo data still builds,
-4. on `main` only, when green, calls the Render deploy hook.
+4. installs the locked frontend dependencies, runs frontend tests, and builds React,
+5. on `main` only, after both jobs pass, calls the Render deploy hook if `RENDER_DEPLOY_HOOK` is configured.
 
-Set up the deploy once:
+### Deploy the resettable demo
 
-1. On [render.com](https://render.com) create a **Web Service** from the repo.
-   Build command: `pip install -r requirements.txt`.
-   Start command: `python scripts/generate_data.py && gunicorn "app:create_app()"`
-   (Render's free disk resets on each deploy, so the demo data is rebuilt at start).
-2. Copy Render's **Deploy Hook** URL into GitHub: Settings → Secrets and variables → Actions → `RENDER_DEPLOY_HOOK`.
-3. Set an environment variable `SECRET_KEY` on Render to a long random string.
-4. For the report, screenshot one feature going from pull request → green CI → deployed.
+1. Merge the deployment changes into `main` after CI passes.
+2. In the [Render dashboard](https://dashboard.render.com), choose **New → Blueprint**,
+   authorize GitHub access, and select `Shariff98/CSIT314-IDP` with branch `main`.
+3. Use the repository's `render.yaml`. It defines a Docker web service and generates `SECRET_KEY`.
+4. When prompted for `LLM_API_KEY`, enter your key from the [Groq console](https://console.groq.com/keys)
+   directly in Render. Do not commit the key to GitHub.
+5. Apply the Blueprint and inspect the first build and startup logs, then open the service URL.
+
+The Dockerfile builds React with Node 22, installs the Python dependencies, and serves the
+built frontend and Flask API from the same address using Gunicorn. `FRONTEND_DIST` points
+to the built frontend; no separate frontend host or manual build/start command is needed.
+
+**This is a resettable demo.** Every container start runs `generate_data.py --size 20`,
+which deletes and recreates the database. User changes do not survive that reset, and
+uploaded files have no persistent disk. The demo uses 20 designers and 20 customers,
+including `customer0@example.com`, with password `password123`.
+
+To trigger deployments from GitHub CI, optionally save Render's Deploy Hook URL as the
+repository Actions secret `RENDER_DEPLOY_HOOK`. The workflow skips the hook when it is absent.
+If using this hook as the only deployment trigger, disable Render's separate automatic
+deployments to avoid duplicate deployments.
+
+### Verify the live chatbot
+
+Log in as `customer0@example.com` with `password123`. Send these messages in order:
+
+1. `I want a modern kitchen.`
+2. `Around $10k.`
+3. `Cheaper.`
+4. `Show more.`
+
+Confirm that the room and style carry into later messages, the budget decreases for
+`Cheaper`, and `Show more` returns unseen projects or explains that there are no more.
+Check that project images load. Choose **Start over** and confirm the preferences clear.
+
+Deployment validation passed 505 Python tests, 54 frontend tests, the React production
+build, and a multi-turn context smoke check using the fallback parser. The Docker image
+build and live Groq connectivity still need verification in the deployed environment.
 
 ## 9. Test data
 
