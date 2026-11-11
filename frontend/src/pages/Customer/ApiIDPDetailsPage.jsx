@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { flaskApi } from '../../services/api';
-import { pageRequest, projectDetailsData, projectDetailsError } from '../../utils/projects';
+import { pageRequest, projectCardData, projectDetailsData, projectDetailsError } from '../../utils/projects';
+import ProjectCard from '../../components/ProjectCard';
 import { canSaveProject, favouriteMutation, favouriteError } from '../../utils/favourites';
 
 const placeholder = '/project-living.svg';
@@ -20,7 +21,7 @@ function Field({ label, value }) {
 }
 
 // Only authentication is read from context. Project/favourite data stays local.
-export default function ApiIDPDetailsPage({ projectId, onBack }) {
+export default function ApiIDPDetailsPage({ projectId, onBack, onOpenProject, onOpenDesigner }) {
   const { user } = useApp();
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -35,7 +36,8 @@ export default function ApiIDPDetailsPage({ projectId, onBack }) {
       success: response => {
         const project = projectDetailsData(response.data.project);
         if (project.id !== Number(projectId)) throw new Error('Server returned a different project.');
-        setResult({ requestedId: projectId, customerId: user?.id, project, isSaved: response.data.is_saved === true });
+        const others = (response.data.other_projects || []).map(projectCardData);
+        setResult({ requestedId: projectId, customerId: user?.id, project, others, isSaved: response.data.is_saved === true });
       },
       failure: setError,
       settled: () => setLoading(false),
@@ -55,8 +57,11 @@ export default function ApiIDPDetailsPage({ projectId, onBack }) {
   }
 
   const { project } = result;
-  return <ApiProjectContent project={project} onBack={onBack} favouriteAction={canSaveProject(user)
-    ? <FavouriteProjectButton key={`${user.id}:${project.id}:${result.isSaved}`} projectId={project.id} initialSaved={result.isSaved} /> : null} />;
+  const favouriteAction = canSaveProject(user)
+    ? <FavouriteProjectButton key={`${user.id}:${project.id}:${result.isSaved}`} projectId={project.id} initialSaved={result.isSaved} />
+    : !user ? <p className="muted">Log in as a homeowner to save this project to your favourites.</p> : null;
+  return <ApiProjectContent project={project} onBack={onBack} favouriteAction={favouriteAction}
+    otherProjects={result.others} onOpenProject={onOpenProject} onOpenDesigner={onOpenDesigner} />;
 }
 
 export function FavouriteProjectButton({ projectId, initialSaved }) {
@@ -93,7 +98,7 @@ export function FavouriteProjectButton({ projectId, initialSaved }) {
   </div>;
 }
 
-export function ApiProjectContent({ project, onBack, favouriteAction = null }) {
+export function ApiProjectContent({ project, onBack, favouriteAction = null, otherProjects = [], onOpenProject, onOpenDesigner }) {
   const company = project.company;
   return <div className="page-shell">
     <button className="text-button" onClick={onBack}>Back to Browse</button>
@@ -140,7 +145,14 @@ export function ApiProjectContent({ project, onBack, favouriteAction = null }) {
           <Field label="Certifications" value={company.certifications} />
           <Field label="Awards" value={company.awards} />
         </dl>
+        {onOpenDesigner && project.designerId && <button className="secondary-button" onClick={() => onOpenDesigner(project.designerId)}>
+          View company page and all projects
+        </button>}
       </>}
     </section>
+    {otherProjects.length > 0 && <section className="section-block" aria-label="More from this designer">
+      <div className="section-heading"><div><h2>More from this designer</h2></div></div>
+      <div className="card-grid">{otherProjects.map(other => <ProjectCard key={other.id} project={other} onView={onOpenProject} />)}</div>
+    </section>}
   </div>;
 }

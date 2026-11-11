@@ -1,19 +1,14 @@
-import DesignerCard from '../../components/DesignerCard';
-import EmptyState from '../../components/EmptyState';
 import PageHeader from '../../components/PageHeader';
 import ApiFavouriteProjects from './ApiFavouriteProjects';
 import { useApp } from '../../context/AppContext';
 
-export default function FavouritesPage({ openDesigner, openApiProject }) {
-  const { user, designers, favouriteDesignerIds } = useApp();
-  const favouriteDesigners = designers.filter((item) => favouriteDesignerIds.includes(item.id));
-
+// US-44 View favourites list, US-08 Search and filter favourites, US-56 Remove from favourites.
+export default function FavouritesPage({ openProject }) {
+  const { user } = useApp();
   return (
     <div className="page-shell">
-      <PageHeader eyebrow="Saved items" title="My favourites" text="Review saved interior design companies and portfolio projects." />
-      <div className="section-heading"><div><h2>Favourite designers</h2></div></div>
-      {favouriteDesigners.length ? <div className="card-grid">{favouriteDesigners.map((designer) => <DesignerCard key={designer.id} designer={designer} onView={openDesigner} />)}</div> : <EmptyState title="No favourite designers" text="Save a company from the designer browsing page." />}
-      <ApiFavouriteProjects key={user?.id} openApiProject={openApiProject} />
+      <PageHeader eyebrow="Saved items" title="My favourites" text="Projects you saved. Search them, open one, or remove it from your list." />
+      <ApiFavouriteProjects key={user?.id} openApiProject={openProject} />
     </div>
   );
 }

@@ -160,7 +160,7 @@ test('portfolio errors settle loading and allow a subsequent retry', async () =>
   assert.equal(events.at(-1), 0);
 });
 
-test('portfolio rendering has loading/empty/error states and real cards have no mutation actions', async () => {
+test('portfolio rendering has loading/empty/error/filtered states and each card opens Manage project', async () => {
   const { createServer } = await import('vite');
   const server = await createServer({ root: fileURLToPath(new URL('../../', import.meta.url)),
     optimizeDeps: { noDiscovery: true, include: [] },
@@ -178,20 +178,19 @@ test('portfolio rendering has loading/empty/error states and real cards have no 
     assert.match(render({ error: 'Offline' }), /Retry portfolio/);
     const items = [false, true].map((published, index) => ({ ...projectCardData({ id: 201 + index, title: 'Real project', published,
       company: { name: 'Actual studio' } }), status: 'Current' }));
-    const html = render({ result: { items, total: 2 } });
+    const html = render({ result: { items, total: 2 }, onManage: () => {} });
     assert.match(html, /Actual studio/);
     assert.match(html, /Draft/);
     assert.match(html, /Published/);
     assert.match(html, /2 project\(s\)/);
-    assert.doesNotMatch(html, />Save<|>Saved<|>Edit<|>Remove<|View details|Studio North/);
-    const page = renderToStaticMarkup(createElement(AppProvider, null, createElement(PortfolioPage)));
-    assert.match(page, /Create and manage portfolio/);
-    assert.match(page, /Demo only/);
-    assert.match(page, /Project title/);
-    assert.match(page, /Demo projects/);
+    assert.match(html, /Manage project/);
+    assert.doesNotMatch(html, />Save<|>Saved<|Studio North|Demo/);
+    assert.match(render({ filtered: true }), /No projects match these filters/);
+    const page = renderToStaticMarkup(createElement(AppProvider, null, createElement(PortfolioPage, { go: () => {} })));
+    assert.match(page, /My projects/);
+    assert.match(page, /Search my projects/);
+    assert.match(page, /New project/);
     assert.match(page, /Loading your portfolio/);
-    assert.match(page, /Photo uploads are not connected yet. You can create a project without photos./);
-    assert.match(page, /Create saves a real Flask draft without photos/);
-    assert.match(page, /type="file"[^>]*disabled/);
+    assert.doesNotMatch(page, /Demo only|not connected/);
   } finally { await server.close(); }
 });

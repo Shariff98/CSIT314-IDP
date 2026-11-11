@@ -1,24 +1,25 @@
-import { useApp } from '../context/AppContext';
+// One design company from GET /api/designers.
+const placeholder = '/floor-plan.svg';
+const money = (value) => `$${Number(value).toLocaleString()}`;
 
-export default function DesignerCard({ designer, onView, showSave = true }) {
-  const { favouriteDesignerIds, toggleFavouriteDesigner } = useApp();
-  const saved = favouriteDesignerIds.includes(designer.id);
-
+export default function DesignerCard({ designer, onView }) {
+  const picture = designer.cover_url || designer.preview_url || designer.logo_url || placeholder;
+  const budget = designer.budget_min && designer.budget_max ? `${money(designer.budget_min)} – ${money(designer.budget_max)}` : null;
   return (
     <article className="card designer-card">
-      <img className="card-image logo-image" src={designer.logo} alt={`${designer.companyName} placeholder`} />
+      <img className="card-image logo-image" src={picture} alt=""
+        onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = placeholder; }} />
       <div className="card-body">
-        <div className="card-kicker">{designer.location}</div>
-        <h3>{designer.companyName}</h3>
-        <p className="rating-line">★ {designer.rating || 'New'} <span>({designer.reviewCount} reviews)</span></p>
+        <div className="card-kicker">{(designer.service_areas || []).join(' · ') || 'Singapore'}</div>
+        <h3>{designer.name}</h3>
+        <p className="muted">{designer.project_count} published project(s){designer.years_experience ? ` · ${designer.years_experience} years` : ''}</p>
         <div className="tag-row">
-          {designer.specialties.slice(0, 3).map((item) => <span className="tag" key={item}>{item}</span>)}
+          {(designer.specialisations || []).slice(0, 3).map((item) => <span className="tag" key={item}>{item}</span>)}
         </div>
         <p className="muted line-clamp">{designer.description}</p>
-        <p><strong>Typical budget:</strong> ${designer.budgetMin.toLocaleString()} – ${designer.budgetMax.toLocaleString()}</p>
+        {budget && <p><strong>Typical budget:</strong> {budget}</p>}
         <div className="card-actions">
-          <button className="primary-button" onClick={() => onView(designer.id)}>View profile</button>
-          {showSave && <button className="secondary-button" onClick={() => toggleFavouriteDesigner(designer.id)}>{saved ? 'Saved' : 'Save'}</button>}
+          <button className="primary-button" onClick={() => onView(designer.designer_id)}>View company</button>
         </div>
       </div>
     </article>

@@ -1,152 +1,159 @@
 import { useEffect, useState } from 'react';
-import FieldError from '../../components/FieldError';
 import PageHeader from '../../components/PageHeader';
-import StatusBadge from '../../components/StatusBadge';
 import { useApp } from '../../context/AppContext';
-import { PROPERTY_TYPES } from '../../data/options';
-import { isEmail, isPhone, isPositiveNumber, isRequired } from '../../utils/validation';
+import { flaskApi } from '../../services/api';
+import { pageRequest } from '../../utils/projects';
 
-export default function CompanyProfilePage() {
-  const { user, designers, categories, saveCompanyProfile } = useApp();
-  const company = designers.find((item) => item.id === (user?.designerId || 101));
-  const [form, setForm] = useState({companyName: '', registrationNo: '', contactEmail: '', phone: '', location: '', description: '', yearsExperience: '', budgetMin: '', budgetMax: '', specialties: '', services: '', propertyTypes: [], categoriesServed: []});
-  const [errors, setErrors] = useState({});
-  const [message, setMessage] = useState('');
+const INFO = [['name', 'Company name'], ['registration_no', 'Registration number'], ['address', 'Address'],
+  ['phone', 'Phone'], ['email', 'Email']];
+const blankInfo = { name: '', registration_no: '', address: '', phone: '', email: '', description: '' };
+const list = (value) => (Array.isArray(value) ? value.join(', ') : value || '');
 
-  useEffect(() => {
-    if (company) setForm({
-      companyName: company.companyName,
-      registrationNo: company.registrationNo,
-      contactEmail: company.contactEmail,
-      phone: company.phone,
-      location: company.location,
-      description: company.description,
-      yearsExperience: company.yearsExperience,
-      budgetMin: company.budgetMin,
-      budgetMax: company.budgetMax,
-      specialties: company.specialties.join(', '),
-      services: company.services.join(', '),
-      propertyTypes: company.propertyTypes || [],
-      categoriesServed: company.categoriesServed || [],
-    });
-  }, [company]);
+export function companyForms(company) {
+  return {
+    info: company ? Object.fromEntries(Object.keys(blankInfo).map((key) => [key, company[key] || ''])) : blankInfo,
+    specialisations: { specialisations: list(company?.specialisations), service_areas: list(company?.service_areas) },
+    credentials: { certifications: company?.certifications || '', awards: company?.awards || '',
+      years_experience: String(company?.years_experience ?? 0) },
+    services: { budget_min: company?.budget_min ? String(company.budget_min) : '',
+      budget_max: company?.budget_max ? String(company.budget_max) : '', services: list(company?.services) },
+  };
+}
 
-  function toggleSelection(field, value) {
-    setForm((current) => ({
-      ...current,
-      [field]: current[field].includes(value)
-        ? current[field].filter((item) => item !== value)
-        : [...current[field], value]
-    }));
+// The designer's company profile. Each section saves on its own, with the matching story:
+// US-24 create, US-02 view, US-32 details, US-25 specialisations, US-12 credentials,
+// US-14 budget and services, US-13 team, US-52 logo and cover, US-15 preview.
+export default function CompanyProfilePage({ go }) {
+  const { user } = useApp();
+  const [company, setCompany] = useState(undefined);
+  const [team, setTeam] = useState([]);
+  const [forms, setForms] = useState(companyForms(null));
+  const [member, setMember] = useState({ name: '', position: '' });
+  const [busy, setBusy] = useState('');
+  const [message, setMessage] = useState(null);
+  const [loadError, setLoadError] = useState('');
+
+  function show(data) {
+    setCompany(data.company);
+    setTeam(data.team);
+    setForms(companyForms(data.company));
   }
 
-  async function submit(event) {
-    event.preventDefault();
-    const next = {};
-    if (!isRequired(form.companyName)) next.companyName = 'Company name is required.';
-    if (!isRequired(form.registrationNo)) next.registrationNo = 'Registration number is required.';
-    if (!isEmail(form.contactEmail)) next.contactEmail = 'Enter a valid email.';
-    if (!isPhone(form.phone)) next.phone = 'Enter a valid phone number.';
-    if (!isRequired(form.location)) next.location = 'Location is required.';
-    if (!isRequired(form.description)) next.description = 'Company description is required.';
-    if (!isPositiveNumber(form.yearsExperience)) next.yearsExperience = 'Years of experience must be greater than 0.';
-    if (!isPositiveNumber(form.budgetMin)) next.budgetMin = 'Minimum budget must be greater than 0.';
-    if (!isPositiveNumber(form.budgetMax) || Number(form.budgetMax) < Number(form.budgetMin)) next.budgetMax = 'Maximum budget must be at least the minimum budget.';
-    if (!isRequired(form.specialties)) next.specialties = 'Add at least one specialty.';
-    if (!isRequired(form.services)) next.services = 'Add at least one service.';
-    if (!form.propertyTypes.length) {next.propertyTypes = 'Select at least one property type.';}
-    if (!form.categoriesServed.length) {next.categoriesServed = 'Select at least one renovation category.';}
-    setErrors(next);
-    if (Object.keys(next).length) return;
+  useEffect(() => pageRequest(signal => flaskApi.getMyCompany({ signal }), {
+    success: response => show(response.data),
+    failure: failure => setLoadError(failure.message),
+  }), []);
 
-    // === BACKEND INTEGRATION === Company changes should be stored in DB; new/unverified companies are reviewed by admin.
-    await saveCompanyProfile({
-      ...form,
-      yearsExperience: Number(form.yearsExperience),
-      budgetMin: Number(form.budgetMin),
-      budgetMax: Number(form.budgetMax),
-      specialties: form.specialties.split(',').map((item) => item.trim()).filter(Boolean),
-      services: form.services.split(',').map((item) => item.trim()).filter(Boolean),
-      propertyTypes: form.propertyTypes,
-      categoriesServed: form.categoriesServed,
-    });
-    setMessage(company?.verified ? 'Company profile updated.' : 'Company profile saved and remains pending administrator verification.');
+  async function run(name, request, success) {
+    setBusy(name);
+    setMessage(null);
+    try {
+      const response = await request();
+      show(response.data);
+      setMessage({ ok: true, text: success });
+      return true;
+    } catch (error) {
+      setMessage({ ok: false, text: error.message });
+      return false;
+    } finally {
+      setBusy('');
+    }
   }
+
+  const edit = (section, field) => (event) => setForms({ ...forms, [section]: { ...forms[section], [field]: event.target.value } });
+  const field = (section, key, label, props = {}) => (
+    <label key={key}>{label}<input value={forms[section][key]} onChange={edit(section, key)} {...props} /></label>
+  );
+  const submit = (name, request, success) => (event) => { event.preventDefault(); run(name, request, success); };
+
+  if (loadError) return <div className="page-shell"><div className="alert error-alert" role="alert">Could not load your company: {loadError}</div></div>;
+  if (company === undefined) return <div className="page-shell"><p role="status">Loading company profile...</p></div>;
+
+  const detailsForm = (
+    <form className="panel form-card" aria-label="Company details" onSubmit={submit('info',
+      () => (company ? flaskApi.updateCompany(forms.info) : flaskApi.createCompany(forms.info)),
+      company ? 'Company details saved.' : 'Company profile created.')}>
+      <h2>{company ? 'Company details' : 'Create your company profile'}</h2>
+      <fieldset disabled={!!busy} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+        <div className="two-column-form">{INFO.map(([key, label]) => field('info', key, label))}</div>
+        <label>About the company<textarea rows="3" value={forms.info.description} onChange={edit('info', 'description')} /></label>
+        <button className="primary-button" type="submit">{company ? 'Save details' : 'Create company profile'}</button>
+      </fieldset>
+    </form>
+  );
 
   return (
-    <div className="page-shell narrow-content">
-      <PageHeader eyebrow="Company profile" title={company?.verified ? 'Manage company profile' : 'Create / complete company profile'} text="Maintain company information, contact details, specialties and services." actions={<StatusBadge>{company?.verified ? 'verified' : company?.status || 'pending'}</StatusBadge>} />
-      <form className="panel form-card large-form" onSubmit={submit} noValidate>
-        <div className="two-column-form">
-          <label>Company name<input value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} /><FieldError message={errors.companyName} /></label>
-          <label>Registration number<input value={form.registrationNo} onChange={(e) => setForm({ ...form, registrationNo: e.target.value })} /><FieldError message={errors.registrationNo} /></label>
-          <label>Contact email<input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /><FieldError message={errors.contactEmail} /></label>
-          <label>Contact phone<input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /><FieldError message={errors.phone} /></label>
-          <label>Location<input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /><FieldError message={errors.location} /></label>
-          <label>Years of experience<input type="number" min="1" value={form.yearsExperience} onChange={(e) => setForm({ ...form, yearsExperience: e.target.value })} /><FieldError message={errors.yearsExperience} /></label>
-          <label>Typical minimum budget<input type="number" min="1" value={form.budgetMin} onChange={(e) => setForm({ ...form, budgetMin: e.target.value })} /><FieldError message={errors.budgetMin} /></label>
-          <label>Typical maximum budget<input type="number" min="1" value={form.budgetMax} onChange={(e) => setForm({ ...form, budgetMax: e.target.value })} /><FieldError message={errors.budgetMax} /></label>
+    <div className="page-shell">
+      <PageHeader eyebrow="Company" title={company?.name || 'Company profile'}
+        text="What customers see on your company page."
+        actions={company && <button className="secondary-button" onClick={() => go('designer', { id: user.id })}>Preview public page</button>} />
+      {message && <div className={`alert ${message.ok ? 'success-alert' : 'error-alert'}`} role={message.ok ? 'status' : 'alert'}>{message.text}</div>}
+      {!company ? detailsForm : <>
+        <div className="two-panel-grid">
+          {detailsForm}
+          <section className="panel form-card" aria-label="Logo and cover image">
+            <h2>Logo and cover image</h2>
+            {['logo', 'cover'].map((kind) => <div key={kind} className="button-row" style={{ marginBottom: 12 }}>
+              {company[`${kind}_url`] ? <img className="company-logo" src={company[`${kind}_url`]} alt={`Current ${kind}`} /> : <span className="muted">No {kind} yet.</span>}
+              <label>{kind === 'logo' ? 'Upload logo' : 'Upload cover image'}<input type="file" accept="image/*" disabled={!!busy} onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                if (file) run(kind, () => flaskApi.uploadCompanyImage(kind, file), `${kind === 'logo' ? 'Logo' : 'Cover image'} uploaded.`);
+              }} /></label>
+            </div>)}
+          </section>
         </div>
-        <label>Company description<textarea rows="5" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /><FieldError message={errors.description} /></label>
-        <label>Design specialties (comma-separated)<input value={form.specialties} onChange={(e) => setForm({ ...form, specialties: e.target.value })} placeholder="Modern, Minimalist, Scandinavian" /><FieldError message={errors.specialties} /></label>
-        <label>Services (comma-separated)<input value={form.services} onChange={(e) => setForm({ ...form, services: e.target.value })} placeholder="Space Planning, Carpentry, Project Management" /><FieldError message={errors.services} /></label>
-        <fieldset>
-          <legend>Property types served</legend>
 
-          <div className="tag-row">
-            {PROPERTY_TYPES.map((type) => (
-              <label
-                key={type}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginRight: 14
-                }}
-              >
-                <input
-                  type="checkbox"
-                  style={{ width: 'auto' }}
-                  checked={form.propertyTypes.includes(type)}
-                  onChange={() => toggleSelection('propertyTypes', type)}
-                />
-                {type}
-              </label>
-            ))}
-          </div>
+        <div className="two-panel-grid section-block">
+          <form className="panel form-card" aria-label="Specialisations" onSubmit={submit('specialisations', () => flaskApi.updateSpecialisations(forms.specialisations), 'Specialisations saved.')}>
+            <h2>Specialisations and service areas</h2>
+            <fieldset disabled={!!busy} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+              {field('specialisations', 'specialisations', 'Styles you specialise in (comma-separated)', { placeholder: 'Modern, Japandi' })}
+              {field('specialisations', 'service_areas', 'Areas you serve (comma-separated)', { placeholder: 'North, East' })}
+              <button className="primary-button" type="submit">Save</button>
+            </fieldset>
+          </form>
 
-          <FieldError message={errors.propertyTypes} />
-        </fieldset>
+          <form className="panel form-card" aria-label="Budget and services" onSubmit={submit('services', () => flaskApi.updateServices(forms.services), 'Budget and services saved.')}>
+            <h2>Budget range and services</h2>
+            <fieldset disabled={!!busy} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+              <div className="two-column-form">
+                {field('services', 'budget_min', 'Minimum budget (SGD)', { type: 'number', min: 1 })}
+                {field('services', 'budget_max', 'Maximum budget (SGD)', { type: 'number', min: 1 })}
+              </div>
+              {field('services', 'services', 'Services (comma-separated)', { placeholder: 'Full renovation, Carpentry' })}
+              <button className="primary-button" type="submit">Save</button>
+            </fieldset>
+          </form>
 
-        <fieldset>
-          <legend>Renovation categories (rooms / areas)</legend>
+          <form className="panel form-card" aria-label="Credentials" onSubmit={submit('credentials', () => flaskApi.updateCredentials(forms.credentials), 'Credentials saved.')}>
+            <h2>Certifications, awards and experience</h2>
+            <fieldset disabled={!!busy} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+              {field('credentials', 'certifications', 'Certifications (comma-separated)')}
+              {field('credentials', 'awards', 'Awards (comma-separated)')}
+              {field('credentials', 'years_experience', 'Years of experience', { type: 'number', min: 0, max: 80 })}
+              <button className="primary-button" type="submit">Save</button>
+            </fieldset>
+          </form>
 
-          <div className="tag-row">
-            {categories.map((category) => (
-              <label
-                key={category}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginRight: 14
-                }}
-              >
-                <input
-                  type="checkbox"
-                  style={{ width: 'auto' }}
-                  checked={form.categoriesServed.includes(category)}
-                  onChange={() => toggleSelection('categoriesServed', category)}
-                />
-                {category}
-              </label>
-            ))}
-          </div>
-
-          <FieldError message={errors.categoriesServed} />
-        </fieldset>
-        <button className="primary-button" type="submit">Save company profile</button>{message && <div className="alert success-alert">{message}</div>}
-      </form>
+          <section className="panel form-card" aria-label="Team members">
+            <h2>Team members</h2>
+            {team.length ? <ul className="team-list">{team.map((person) => <li key={person.id}>
+              <span><strong>{person.name}</strong> <span className="muted">{person.position}</span></span>
+              <button className="danger-button compact" disabled={!!busy}
+                onClick={() => run('team', () => flaskApi.removeTeamMember(person.id), `${person.name} removed.`)}>Remove</button>
+            </li>)}</ul> : <p className="muted">No team members yet.</p>}
+            <form className="inline-form" onSubmit={async (event) => {
+              event.preventDefault();
+              if (await run('team', () => flaskApi.addTeamMember(member), `${member.name} added.`)) setMember({ name: '', position: '' });
+            }}>
+              <label>Name<input value={member.name} onChange={(e) => setMember({ ...member, name: e.target.value })} /></label>
+              <label>Position<input value={member.position} onChange={(e) => setMember({ ...member, position: e.target.value })} /></label>
+              <button className="primary-button" type="submit" disabled={!!busy}>Add</button>
+            </form>
+          </section>
+        </div>
+      </>}
     </div>
   );
 }

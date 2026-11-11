@@ -8,7 +8,7 @@ using a strict **boundary-control-entity (b-c-e)** design so the code matches th
 | --- | --- |
 | User stories implemented | **60 of 60** (one control class per story) |
 | Detailed use cases (diagrammed) | **12**, two per member, marked ★ below |
-| Tests | **505 Python tests and 54 frontend tests passed** during deployment validation |
+| Tests | **561 Python tests** and **63 frontend tests**, all passing |
 | Test data | 202 accounts, 100 companies, 210 team members, 300 projects with photos, 2,600+ views, 260+ favourites |
 | CI/CD | GitHub Actions validates pull requests and pushes to `main`; optional Render deploy hook |
 
@@ -17,7 +17,7 @@ using a strict **boundary-control-entity (b-c-e)** design so the code matches th
 | Layer | Choice |
 | --- | --- |
 | Backend | Python 3.12, Flask 3 (object-oriented: every b-c-e element is a class or a module of routes) |
-| Frontend | React + Vite; existing Jinja HTML pages remain available |
+| Frontend | React + Vite for visitors, customers and designers; Jinja + Bootstrap pages for User Admin and Platform Management (see section 3a) |
 | Database | SQLite (one file, no server) |
 | Tests | pytest + pytest-cov |
 | CI/CD | GitHub Actions + Render |
@@ -40,16 +40,28 @@ pytest --cov=control --cov=entity --cov=boundary   # with a coverage report
 `generate_data.py` deletes the old database each run, so the demo always starts from the same data.
 Use `--size 20` for a quick, smaller set.
 
+Run the React app against that Flask server (second terminal):
+
+```bash
+cd frontend
+npm ci
+npm run dev                        # open http://localhost:5173 (Vite sends /api and the admin pages to Flask)
+npm test                           # frontend unit tests
+```
+
+Or run it the way Render does, one server for both: `npm run build` in `frontend/`, then start Flask with
+`FRONTEND_DIST=frontend/dist` and open http://127.0.0.1:5000.
+
 Demo logins (password for every generated account: `password123`):
 
 | Role | Email | Lands on |
 | --- | --- | --- |
-| User Admin | admin@example.com | User accounts |
-| Platform Management | manager@example.com | Platform dashboard |
-| Interior Designer | designer0@example.com … designer99@example.com | My projects |
-| Customer | customer0@example.com … customer99@example.com | Browse projects |
+| User Admin | admin@example.com | User accounts (Flask page) |
+| Platform Management | manager@example.com | Platform dashboard (Flask page) |
+| Interior Designer | designer0@example.com … designer99@example.com | Dashboard (React) |
+| Customer | customer0@example.com … customer99@example.com | Home (React) |
 
-Visitors can also browse without logging in and can sign up as a customer at `/register`.
+Visitors can also browse projects and designers without logging in, and sign up as a customer.
 
 ## 3. How b-c-e maps to the code
 
@@ -86,8 +98,46 @@ design-match/
 ├── templates/                # Bootstrap pages, one folder per actor
 ├── tests/                    # pytest unit tests
 ├── scripts/generate_data.py  # test data generator
+├── frontend/                 # React app (boundary layer for visitors, customers, designers)
 └── .github/workflows/ci.yml  # CI/CD pipeline
 ```
+
+## 3a. React and Flask: one app, one database
+
+React is a second **boundary**: it calls the same controllers as the HTML pages, through a JSON API
+in the same `boundary/*.py` modules. React holds no data of its own. Every page loads from Flask
+and shows what Flask saved, so there is no mock data anywhere.
+
+| Who | Uses | Why |
+| --- | --- | --- |
+| Visitor, Customer | React | Browse/search/filter projects, project details, designers, company pages, favourites, chatbot |
+| Interior Designer | React | Dashboard, My projects (create, edit, tags, photos, publish, current/past, delete), company profile. The deeper reports (rank, trends, compare, CSV) open the Flask `/analytics` pages. |
+| User Admin, Platform Management | Flask pages | They log in through React and are handed to `/admin/accounts` or `/platform/` with the same session cookie (no second login). Flask's Log out returns to the React login. |
+
+React pages have real addresses, so refresh, Back and shared links work. They use `#/…` so they can
+never clash with Flask's own paths: `#/projects`, `#/projects/12`, `#/designers`, `#/designers/3`,
+`#/favourites`, `#/designer`, `#/designer/projects`, `#/designer/projects/new`,
+`#/designer/projects/12`, `#/designer/company`.
+
+JSON API (all answers are `{"data": …}` or `{"error": {"code", "message"}}`, including 404/405/413/500):
+
+| Endpoint | Story | Controller |
+| --- | --- | --- |
+| `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `POST /api/customers/register` | US-23, 01, 43 | LoginController, LogoutController, RegisterCustomerController |
+| `GET /api/idps`, `GET /api/idps/options`, `GET /api/idps/<id>` | US-07, 28, 17, 18, 34, 37, 45 | Browse/Search/Filter/ViewIDP, ViewDesignerProjects |
+| `GET/POST/DELETE /api/favourites/projects[/<id>]` | US-44, 08, 19, 56 | View/SearchFavourites, Save/RemoveFavourite |
+| `GET /api/designers`, `GET /api/designers/<designer_id>` | US-53, 15 | BrowseDesignersController, ViewCompanyPageController |
+| `GET/POST /api/designer/portfolio` | US-16, 03, 54 | ListMyIDPs, SearchMyIDPs, CreateIDP |
+| `GET/PUT/DELETE /api/designer/portfolio/<id>` | US-27, 04, 05 | ViewMyIDP, UpdateIDP, DeleteIDP |
+| `PUT /api/designer/portfolio/<id>/tags`, `/status`, `/publish` | US-26, 06, 33 | AssignIDPTags, MarkIDPStatus, PublishIDP |
+| `POST /api/designer/portfolio/<id>/photos`, `PUT /api/designer/photos/<id>/cover`, `DELETE /api/designer/photos/<id>` | US-55 | UploadIDPPhotoController |
+| `GET /api/designer/analytics` | US-57, 29, 46, 48 | PortfolioDashboard, ViewIDPViewCount, ViewShortlistCount, NotifyMilestone |
+| `GET/POST/PUT /api/designer/company`, `PUT …/specialisations`, `…/credentials`, `…/services`, `POST/DELETE …/team`, `POST …/images` | US-02, 24, 32, 25, 12, 14, 13, 52 | the company controllers |
+| `POST /api/chat`, `GET /api/chat/status` | US-61 | RecommendIDPsController (+ LLMGateway) |
+
+Every `/api/designer/…` and favourites endpoint re-checks the account and its profile in the
+database on each request (`api_role_required` in `boundary/common.py`), so a suspended user is
+logged out at once. Someone else's project or photo is answered with 404.
 
 ## 4. User story → class map
 
@@ -282,7 +332,17 @@ deployments to avoid duplicate deployments.
 
 ### Verify the live chatbot
 
-Log in as `customer0@example.com` with `password123`. Send these messages in order:
+First check that the chatbot really reaches Groq. Open `https://<your-service>.onrender.com/api/chat/status?check=1`.
+You want `"configured": true` and `"check": {"ok": true, ...}`. If not, `error` says why, for example
+`HTTP 401: the API key was rejected (check LLM_API_KEY)`. The key itself is never shown.
+
+The earlier gateway hid provider errors behind the fallback parser. The original deployed
+failure still requires verification using the status endpoint and runtime logs.
+`boundary/llm_gateway.py` now sends its own `User-Agent`, retries rate limits and timeouts, switches
+to `LLM_FALLBACK_MODEL` if the main model is retired, and logs the reason for any fallback in the
+Render logs. `tests/test_llm_gateway.py` covers each of these.
+
+Then log in as `customer0@example.com` with `password123`. Send these messages in order:
 
 1. `I want a modern kitchen.`
 2. `Around $10k.`
@@ -291,11 +351,8 @@ Log in as `customer0@example.com` with `password123`. Send these messages in ord
 
 Confirm that the room and style carry into later messages, the budget decreases for
 `Cheaper`, and `Show more` returns unseen projects or explains that there are no more.
-Check that project images load. Choose **Start over** and confirm the preferences clear.
-
-Deployment validation passed 505 Python tests, 54 frontend tests, the React production
-build, and a multi-turn context smoke check using the fallback parser. The Docker image
-build and live Groq connectivity still need verification in the deployed environment.
+Check that project images load and that the chat says nothing about answering "without the AI
+service". Choose **Start over** and confirm the preferences clear.
 
 ## 9. Test data
 

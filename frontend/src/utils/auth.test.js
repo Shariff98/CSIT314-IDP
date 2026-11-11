@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { homeForRole, canAccessPage, publicUser, registrationPayload, unauthenticatedMessage, initialPage } from './auth.js';
+import { homeForRole, flaskHomeForRole, canAccessPage, fallbackPage, publicUser, registrationPayload, unauthenticatedMessage, initialPage } from './auth.js';
 import { flaskApi } from '../services/api.js';
 
 test('expected anonymous 401 is silent, including after successful logout', () => {
@@ -15,41 +15,49 @@ test('losing an authenticated session reports expiry and keeps the message on su
   assert.equal(unauthenticatedMessage(false, message), message);
 });
 
-test('root refresh selects the restored user home for each role; anonymous visitors see landing', () => {
+test('opening the bare address sends a logged-in user to their role home; other pages are kept', () => {
   assert.equal(initialPage('landing', null), 'landing');
-  for (const [role, home] of Object.entries(homeForRole)) {
-    assert.equal(initialPage('landing', { role }), home);
+  assert.equal(initialPage('landing', { role: 'Customer' }), 'landing');
+  assert.equal(initialPage('landing', { role: 'InteriorDesigner' }), 'dashboard');
+  for (const page of ['project', 'designer', 'favourites', 'portfolio-item']) {
+    assert.equal(initialPage(page, { role: 'InteriorDesigner' }), page);
   }
 });
 
-test('initial navigation preserves deliberate public selections and non-root visits', () => {
-  const user = { role: 'Customer' };
-  for (const page of ['landing', 'designer-profile', 'project-details', 'login', 'register']) {
-    assert.equal(initialPage(page, user, true), page);
+test('public pages are open to everyone, including visitors', () => {
+  for (const page of ['landing', 'login', 'register', 'projects', 'project', 'designers', 'designer']) {
+    for (const user of [null, { role: 'Customer' }, { role: 'InteriorDesigner' }]) assert.equal(canAccessPage(page, user), true);
   }
-  assert.equal(initialPage('landing', user, false, false), 'landing');
-  assert.equal(initialPage('project-details', user), 'project-details');
-  assert.equal(initialPage('customer-favourites', user), 'customer-favourites');
 });
 
-for (const [role, home] of Object.entries(homeForRole)) {
-  test(`${role} keeps its role and can access only its protected pages`, () => {
+test('favourites are for customers; designer tools are for designers; unknown pages for no one', () => {
+  const customer = { role: 'Customer' };
+  const designer = { role: 'InteriorDesigner' };
+  assert.equal(canAccessPage('favourites', customer), true);
+  assert.equal(canAccessPage('favourites', designer), false);
+  assert.equal(canAccessPage('favourites', null), false);
+  for (const page of ['dashboard', 'portfolio', 'portfolio-new', 'portfolio-item', 'company']) {
+    assert.equal(canAccessPage(page, designer), true);
+    assert.equal(canAccessPage(page, customer), false);
+    assert.equal(canAccessPage(page, null), false);
+  }
+  assert.equal(canAccessPage('admin-accounts', { role: 'UserAdmin' }), false);
+});
+
+test('a blocked page sends visitors to log in and users to their home', () => {
+  assert.equal(fallbackPage(null), 'login');
+  assert.equal(fallbackPage({ role: 'Customer' }), 'landing');
+  assert.equal(fallbackPage({ role: 'InteriorDesigner' }), 'dashboard');
+});
+
+test('every role is accepted; admins and managers are handed to the Flask pages', () => {
+  for (const role of [...Object.keys(homeForRole), ...Object.keys(flaskHomeForRole)]) {
     const user = publicUser({ id: 1, name: 'Person', email: 'p@example.com', role, status: 'Active', password: 'secret', password_hash: 'hash' });
     assert.equal(user.role, role);
     assert.equal(Object.hasOwn(user, 'password'), false);
     assert.equal(Object.hasOwn(user, 'password_hash'), false);
-    assert.equal(canAccessPage(home, user), true);
-    for (const [otherRole, otherHome] of Object.entries(homeForRole)) {
-      if (role !== otherRole) assert.equal(canAccessPage(otherHome, user), false);
-    }
-  });
-}
-
-test('anonymous visitors cannot open protected pages but can browse public profiles', () => {
-  for (const home of Object.values(homeForRole)) assert.equal(canAccessPage(home, null), false);
-  assert.equal(canAccessPage('designer-profile', null), true);
-  assert.equal(canAccessPage('project-details', null), true);
-  assert.equal(canAccessPage('admin-categories', { role: 'UserAdmin' }), false);
+  }
+  assert.deepEqual(flaskHomeForRole, { UserAdmin: '/admin/accounts', PlatformManager: '/platform/' });
   assert.throws(() => publicUser({ id: 1, name: 'Unknown', role: 'admin' }), /not supported/);
 });
 

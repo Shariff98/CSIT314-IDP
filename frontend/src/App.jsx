@@ -2,119 +2,106 @@ import { useEffect, useRef, useState } from 'react';
 import Layout from './components/Layout';
 import ChatWidget from './components/ChatWidget';
 import { useApp } from './context/AppContext';
-import { homeForRole, canAccessPage, initialPage } from './utils/auth';
+import { canAccessPage, fallbackPage, flaskHomeForRole, initialPage } from './utils/auth';
+import { hashFor, parseHash } from './utils/router';
 
 import LandingPage from './pages/Public/LandingPage';
 import LoginPage from './pages/Public/LoginPage';
 import RegisterPage from './pages/Public/RegisterPage';
 
-import CustomerHome from './pages/Customer/CustomerHome';
-import DesignersPage from './pages/Customer/DesignersPage';
 import IDPsPage from './pages/Customer/IDPsPage';
-import DesignerProfilePage from './pages/Customer/DesignerProfilePage';
-import IDPDetailsPage from './pages/Customer/IDPDetailsPage';
 import ApiIDPDetailsPage from './pages/Customer/ApiIDPDetailsPage';
-import RequirementsPage from './pages/Customer/RequirementsPage';
+import DesignersPage from './pages/Customer/DesignersPage';
+import DesignerProfilePage from './pages/Customer/DesignerProfilePage';
 import FavouritesPage from './pages/Customer/FavouritesPage';
-import CustomerConsultationsPage from './pages/Customer/ConsultationsPage';
-import CustomerPaymentsPage from './pages/Customer/PaymentsPage';
 
 import DesignerDashboard from './pages/Designer/DesignerDashboard';
-import CompanyProfilePage from './pages/Designer/CompanyProfilePage';
 import PortfolioPage from './pages/Designer/PortfolioPage';
-import PackagesPage from './pages/Designer/PackagesPage';
-import EnquiriesPage from './pages/Designer/EnquiriesPage';
-import DesignerConsultationsPage from './pages/Designer/ConsultationsPage';
-import ProjectsPage from './pages/Designer/ProjectsPage';
-import DesignerPaymentsPage from './pages/Designer/PaymentsPage';
-import DesignerReviewsPage from './pages/Designer/ReviewsPage';
+import CreateProjectPage from './pages/Designer/CreateProjectPage';
+import ManageProjectPage from './pages/Designer/ManageProjectPage';
+import CompanyProfilePage from './pages/Designer/CompanyProfilePage';
 
-import AdminDashboard from './pages/Admin/AdminDashboard';
-import AccountsPage from './pages/Admin/AccountsPage';
-import VerificationPage from './pages/Admin/VerificationPage';
-import ReportsPage from './pages/Admin/ReportsPage';
-import ModerationPage from './pages/Admin/ModerationPage';
-import CategoriesPage from './pages/Admin/CategoriesPage';
+function currentRoute() {
+  return parseHash(typeof window === 'undefined' ? '' : window.location.hash);
+}
 
 export default function App() {
   const { user, authLoading } = useApp();
-  const [page, setPage] = useState('landing');
-  const [initialNavigationPending, setInitialNavigationPending] = useState(true);
-  const explicitlyNavigated = useRef(false);
-  const [selectedDesignerId, setSelectedDesignerId] = useState(101);
-  const [selectedProjectId, setSelectedProjectId] = useState(201);
-  const [selectedApiProjectId, setSelectedApiProjectId] = useState(null);
+  const [route, setRoute] = useState(currentRoute);
+  const startedAtHome = useRef(true);
 
-  const go = (next) => {
-    explicitlyNavigated.current = true;
-    setPage(next);
+  // The address bar is the source of truth: Back/Forward and typed URLs change the page.
+  useEffect(() => {
+    const onHashChange = () => {
+      startedAtHome.current = false;
+      setRoute(currentRoute());
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  function go(page, params = {}) {
+    const hash = hashFor(page, params);
+    startedAtHome.current = false;
+    if (window.location.hash === hash) setRoute(parseHash(hash));
+    else window.location.hash = hash;   // fires hashchange, which updates the page
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  }
 
-  const openDesigner = (id) => {
-    setSelectedDesignerId(id);
-    go('designer-profile');
-  };
+  // Swap the current history entry instead of adding one (used for redirects).
+  function replace(page, params = {}) {
+    window.location.replace(hashFor(page, params));
+    setRoute(parseHash(hashFor(page, params)));
+  }
 
-  const openProject = (id) => {
-    setSelectedProjectId(id);
-    go('project-details');
-  };
+  const flaskHome = user ? flaskHomeForRole[user.role] : null;
+  const allowed = canAccessPage(route.page, user);
 
-  const openApiProject = (id) => {
-    setSelectedApiProjectId(id);
-    go('api-project-details');
-  };
-
-  const allowed = canAccessPage(page, user);
   useEffect(() => {
-    if (!authLoading && initialNavigationPending) {
-      setPage(current => initialPage(current, user, explicitlyNavigated.current, window.location.pathname === '/'));
-      setInitialNavigationPending(false);
+    if (authLoading) return;
+    if (flaskHome) {
+      // User Admin and Platform Manager use the Flask administration pages.
+      window.location.assign(flaskHome);
+      return;
     }
-  }, [authLoading, initialNavigationPending, user]);
-  useEffect(() => {
-    if (!authLoading && !initialNavigationPending && !allowed) setPage(user ? homeForRole[user.role] || 'landing' : 'login');
-  }, [page, user, authLoading, initialNavigationPending, allowed]);
+    if (!allowed) replace(fallbackPage(user));
+    else if (startedAtHome.current && user) {
+      const home = initialPage(route.page, user);
+      if (home !== route.page) replace(home);
+    }
+    startedAtHome.current = false;
+  }, [authLoading, user, flaskHome, allowed, route.page]);
 
-  if (authLoading || initialNavigationPending) return <Layout page={page} go={go}><div className="auth-page" role="status">Checking your login session...</div></Layout>;
-  if (!allowed) return <Layout page={page} go={go}><div className="auth-page" role="status">Opening your account page...</div></Layout>;
+  if (authLoading) return <Layout page={route.page} go={go}><div className="auth-page" role="status">Checking your login session...</div></Layout>;
+  if (flaskHome) {
+    return <Layout page={route.page} go={go}><div className="auth-page" role="status">
+      Opening the administration pages... <a href={flaskHome}>Continue</a>
+    </div></Layout>;
+  }
+  if (!allowed) return <Layout page={route.page} go={go}><div className="auth-page" role="status">Opening your account page...</div></Layout>;
+
+  const openProject = (id) => go('project', { id });
+  const openDesigner = (id) => go('designer', { id });
+  const id = route.params.id;
 
   let content;
-  switch (page) {
+  switch (route.page) {
     case 'login': content = <LoginPage go={go} />; break;
     case 'register': content = <RegisterPage go={go} />; break;
-    case 'designer-profile': content = <DesignerProfilePage designerId={selectedDesignerId} go={go} openProject={openProject} />; break;
-    case 'project-details': content = <IDPDetailsPage projectId={selectedProjectId} go={go} openDesigner={openDesigner} />; break;
-    case 'api-project-details': content = <ApiIDPDetailsPage key={selectedApiProjectId} projectId={selectedApiProjectId} onBack={() => go('customer-idps')} />; break;
+    case 'projects': content = <IDPsPage openProject={openProject} />; break;
+    case 'project': content = <ApiIDPDetailsPage key={id} projectId={id} onBack={() => go('projects')}
+      onOpenProject={openProject} onOpenDesigner={openDesigner} />; break;
+    case 'designers': content = <DesignersPage openDesigner={openDesigner} />; break;
+    case 'designer': content = <DesignerProfilePage key={id} designerId={id} openProject={openProject} go={go} />; break;
+    case 'favourites': content = <FavouritesPage openProject={openProject} />; break;
 
-    case 'customer-home': content = <CustomerHome go={go} openDesigner={openDesigner} openProject={openProject} />; break;
-    case 'customer-designers': content = <DesignersPage openDesigner={openDesigner} openProject={openProject} />; break;
-    case 'customer-idps': content = <IDPsPage openApiProject={openApiProject} />; break;
-    case 'customer-requirements': content = <RequirementsPage />; break;
-    case 'customer-favourites': content = <FavouritesPage openDesigner={openDesigner} openApiProject={openApiProject} />; break;
-    case 'customer-consultations': content = <CustomerConsultationsPage />; break;
-    case 'customer-payments': content = <CustomerPaymentsPage />; break;
+    case 'dashboard': content = <DesignerDashboard go={go} />; break;
+    case 'portfolio': content = <PortfolioPage go={go} />; break;
+    case 'portfolio-new': content = <CreateProjectPage go={go} />; break;
+    case 'portfolio-item': content = <ManageProjectPage key={id} projectId={id} go={go} />; break;
+    case 'company': content = <CompanyProfilePage go={go} />; break;
 
-    case 'designer-dashboard': content = <DesignerDashboard openProject={openProject} go={go} />; break;
-    case 'designer-company': content = <CompanyProfilePage />; break;
-    case 'designer-portfolio': content = <PortfolioPage />; break;
-    case 'designer-packages': content = <PackagesPage />; break;
-    case 'designer-enquiries': content = <EnquiriesPage />; break;
-    case 'designer-consultations': content = <DesignerConsultationsPage />; break;
-    case 'designer-projects': content = <ProjectsPage />; break;
-    case 'designer-payments': content = <DesignerPaymentsPage />; break;
-    case 'designer-reviews': content = <DesignerReviewsPage />; break;
-
-    case 'admin-dashboard': content = <AdminDashboard go={go} />; break;
-    case 'admin-accounts': content = <AccountsPage />; break;
-    case 'admin-verification': content = <VerificationPage />; break;
-    case 'admin-reports': content = <ReportsPage />; break;
-    case 'admin-moderation': content = <ModerationPage />; break;
-    case 'manager-categories':
-    case 'admin-categories': content = <CategoriesPage />; break;
-
-    default: content = <LandingPage go={go} openDesigner={openDesigner} openProject={openProject} />;
+    default: content = <LandingPage go={go} openProject={openProject} openDesigner={openDesigner} />;
   }
 
   // Budget Match Assistant: shown to visitors and customers on every page.
@@ -122,8 +109,8 @@ export default function App() {
 
   return (
     <>
-      <Layout page={page} go={go}>{content}</Layout>
-      {showChat && <ChatWidget onOpenProject={openApiProject} />}
+      <Layout page={route.page} go={go}>{content}</Layout>
+      {showChat && <ChatWidget onOpenProject={openProject} />}
     </>
   );
 }
