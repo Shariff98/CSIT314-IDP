@@ -14,7 +14,7 @@ services:
       - key: LLM_BASE_URL
         value: https://api.groq.com/openai/v1
       - key: LLM_MODEL
-        value: llama-3.3-70b-versatile
+        value: openai/gpt-oss-120b
       # Used automatically if Groq retires or rejects LLM_MODEL.
       - key: LLM_FALLBACK_MODEL
-        value: llama-3.1-8b-instant
+        value: openai/gpt-oss-20b

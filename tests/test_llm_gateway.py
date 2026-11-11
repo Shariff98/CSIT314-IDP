@@ -48,8 +48,8 @@ class FakeOpener:
 
 def gateway(opener, **kwargs):
     kwargs.setdefault("api_key", "gsk_test")
-    return LLMGateway(base_url="https://api.groq.com/openai/v1", model="llama-3.3-70b-versatile",
-                      fallback_model="llama-3.1-8b-instant", opener=opener, sleep=lambda s: None, **kwargs)
+    return LLMGateway(base_url="https://api.groq.com/openai/v1", model="openai/gpt-oss-120b",
+                      fallback_model="openai/gpt-oss-20b", opener=opener, sleep=lambda s: None, **kwargs)
 
 
 def test_every_request_sends_a_real_user_agent_not_python_urllib():
@@ -85,8 +85,8 @@ def test_retired_model_switches_to_the_fallback_model():
     opener = FakeOpener(gone, ok("Hi"))
     llm = gateway(opener)
     llm._chat([{"role": "user", "content": "hi"}])
-    assert [opener.body(i)["model"] for i in range(2)] == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-    assert llm.last_call["model"] == "llama-3.1-8b-instant"
+    assert [opener.body(i)["model"] for i in range(2)] == ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+    assert llm.last_call["model"] == "openai/gpt-oss-20b"
 
 
 def test_json_mode_rejection_retries_without_json_mode():
@@ -167,7 +167,7 @@ def test_chat_status_check_uses_the_live_gateway(tmp_path):
     app = create_app(db_path=str(tmp_path / "t.db"), upload_dir=str(tmp_path / "up"), llm_gateway=llm)
     data = app.test_client().get("/api/chat/status?check=1").json
     assert data["check"] == {"ok": True, "reply": "OK"} and data["last_call"]["ok"] is True
-    assert data["model"] == "llama-3.3-70b-versatile" and "gsk_test" not in json.dumps(data)
+    assert data["model"] == "openai/gpt-oss-120b" and "gsk_test" not in json.dumps(data)
 
 
 def test_chat_uses_the_llm_end_to_end_when_it_answers(tmp_path):
@@ -207,3 +207,21 @@ def test_invalid_content_falls_back_instead_of_crashing(content):
     with pytest.raises(LLMUnavailable):
         llm._chat([{"role": "user", "content": "hi"}])
     assert llm.status()["last_call"]["ok"] is False
+
+
+def test_groq_replacement_model_has_reasoning_budget():
+    opener = FakeOpener(ok("OK"))
+    gateway(opener)._chat([{"role": "user", "content": "hi"}])
+    body = opener.body()
+    assert body["max_completion_tokens"] == 2048
+    assert body["reasoning_effort"] == "low"
+    assert body["include_reasoning"] is False
+    assert "max_tokens" not in body
+
+
+def test_other_providers_keep_compatible_parameters():
+    opener = FakeOpener(ok("OK"))
+    LLMGateway(base_url="https://example.test/v1", api_key="test", model="other-model", opener=opener)._chat([])
+    body = opener.body()
+    assert body["max_tokens"] == 400
+    assert "reasoning_effort" not in body

@@ -4,7 +4,7 @@ This is the ONLY class that knows the API key and URL. It talks to any
 OpenAI-compatible chat API, so switching provider is environment variables
 and no code changes:
 
-    Groq (free):  LLM_BASE_URL=https://api.groq.com/openai/v1   LLM_MODEL=llama-3.3-70b-versatile
+    Groq (free):  LLM_BASE_URL=https://api.groq.com/openai/v1   LLM_MODEL=openai/gpt-oss-120b
     DeepSeek:     LLM_BASE_URL=https://api.deepseek.com/v1      LLM_MODEL=deepseek-chat
     Gemini:       LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai  LLM_MODEL=gemini-2.0-flash
 
@@ -39,8 +39,8 @@ log = logging.getLogger(__name__)
 
 USER_AGENT = "DesignMatch/1.0 (CSIT314 student project; python-urllib)"
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
-DEFAULT_FALLBACK_MODEL = "llama-3.1-8b-instant"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+DEFAULT_FALLBACK_MODEL = "openai/gpt-oss-20b"
 RETRY_STATUSES = {408, 409, 425, 429, 500, 502, 503, 504}
 MODEL_GONE_WORDS = ("model_not_found", "model_decommissioned", "decommissioned", "does not exist")
 
@@ -221,6 +221,9 @@ class LLMGateway:
 
     def _post(self, model, messages, json_mode):
         body = {"model": model, "messages": messages, "temperature": 0.2, "max_tokens": 400}
+        if model in {"openai/gpt-oss-120b", "openai/gpt-oss-20b"} and urlparse(self.base_url).hostname == "api.groq.com":
+            body.pop("max_tokens")
+            body.update(max_completion_tokens=2048, reasoning_effort="low", include_reasoning=False)
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         request = urllib.request.Request(

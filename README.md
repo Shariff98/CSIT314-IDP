@@ -332,6 +332,11 @@ deployments to avoid duplicate deployments.
 
 ### Verify the live chatbot
 
+Use `LLM_MODEL=openai/gpt-oss-120b` and `LLM_FALLBACK_MODEL=openai/gpt-oss-20b`.
+Update any existing Render overrides as well as the local environment. The previous Llama
+models were [retired for free/developer accounts on 16 August 2026](https://console.groq.com/docs/deprecations).
+
+
 First check that the chatbot really reaches Groq. Open `https://<your-service>.onrender.com/api/chat/status?check=1`.
 You want `"configured": true` and `"check": {"ok": true, ...}`. If not, `error` says why, for example
 `HTTP 401: the API key was rejected (check LLM_API_KEY)`. The key itself is never shown.
