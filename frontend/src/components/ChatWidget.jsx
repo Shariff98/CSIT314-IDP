@@ -109,7 +109,10 @@ export default function ChatWidget({ onOpenProject }) {
   if (!open) {
     return (
       <button ref={launcherRef} className="cw-launcher" onClick={() => setOpen(true)} aria-label="Open budget assistant">
-        💬
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
+        </svg>
+        <span>Find by budget</span>
       </button>
     );
   }
@@ -122,7 +125,10 @@ export default function ChatWidget({ onOpenProject }) {
       onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
     >
       <header className="cw-header">
-        <span>Budget Match Assistant</span>
+        <span>
+          Budget Match Assistant
+          <small>Projects that fit your budget</small>
+        </span>
         <button onClick={() => setOpen(false)} aria-label="Close">×</button>
       </header>
       {describePrefs(context) && (
