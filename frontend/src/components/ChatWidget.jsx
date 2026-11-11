@@ -10,6 +10,7 @@ import { describePrefs } from "../utils/chat.js";
 const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 const MAX_LENGTH = 500;
 const money = (n) => "$" + Number(n).toLocaleString();
+const signedMoney = (n) => (n === 0 ? "on budget" : `${n > 0 ? "+" : "−"}${money(Math.abs(n))}`);
 const GREETING = {
   role: "assistant",
   content: 'Hi! Tell me about your project and budget, for example "modern kitchen around $10,000".',
@@ -54,7 +55,7 @@ export default function ChatWidget({ onOpenProject }) {
       setMessages((prev) => [
         ...prev,
         {
-          role: "assistant", content: data.reply, projects: data.projects,
+          role: "assistant", content: data.reply, projects: data.projects, comparison: data.comparison,
           suggestions: data.suggestions, fallback: data.source === "fallback",
         },
       ]);
@@ -65,6 +66,13 @@ export default function ChatWidget({ onOpenProject }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function openCard(e, id) {
+    if (!onOpenProject) return;
+    e.preventDefault();
+    setOpen(false);
+    onOpenProject(id);
   }
 
   if (!open) {
@@ -93,6 +101,7 @@ export default function ChatWidget({ onOpenProject }) {
           <div key={i} className={`cw-msg cw-${m.role}${m.error ? " cw-error" : ""}`}>
             <p>{m.content}</p>
             {m.fallback && <small className="cw-note">Answered without the AI service.</small>}
+            {m.comparison?.length > 0 && <ComparisonTable rows={m.comparison} onOpen={openCard} />}
             {m.projects?.length > 0 && (
               <div className="cw-cards">
                 {m.projects.map((p) => (
@@ -101,12 +110,7 @@ export default function ChatWidget({ onOpenProject }) {
                     key={p.id}
                     className="cw-card"
                     href={p.url}
-                    onClick={(e) => {
-                      if (!onOpenProject) return;
-                      e.preventDefault();
-                      setOpen(false);
-                      onOpenProject(p.id);
-                    }}
+                    onClick={(e) => openCard(e, p.id)}
                   >
                     <img src={p.image} alt="" onError={(e) => (e.currentTarget.style.display = "none")} />
                     <span className="cw-label">{p.label}</span>
@@ -140,6 +144,42 @@ export default function ChatWidget({ onOpenProject }) {
         />
         <button disabled={loading || !text.trim()}>Send</button>
       </form>
+    </div>
+  );
+}
+
+// Side-by-side facts from the database for "compare #12 and #15" / "Compare these".
+function ComparisonTable({ rows, onOpen }) {
+  const facts = [
+    ["Price", (r) => money(r.budget)],
+    ["vs budget", (r) => (r.vs_budget == null ? "–" : signedMoney(r.vs_budget))],
+    ["Room", (r) => r.category],
+    ["Style", (r) => r.styles.join(", ") || "–"],
+    ["Property", (r) => r.property_type || "–"],
+    ["Designer", (r) => r.designer],
+    ["Saves", (r) => r.saves],
+    ["Views", (r) => r.views],
+  ];
+  return (
+    <div className="cw-compare">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col"><span className="cw-sr">Fact</span></th>
+            {rows.map((r) => (
+              <th key={r.id} scope="col"><a href={r.url} onClick={(e) => onOpen(e, r.id)}>{r.title}</a></th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {facts.map(([label, value]) => (
+            <tr key={label}>
+              <th scope="row">{label}</th>
+              {rows.map((r) => <td key={r.id}>{value(r)}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

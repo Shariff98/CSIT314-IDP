@@ -70,14 +70,14 @@ def test_cheaper_with_a_new_amount_uses_the_amount(kitchens):
 
 def test_chips_after_results(kitchens):
     assert chat("modern kitchen around $10k")["suggestions"] == [
-        "Show more", "Cheaper", "A bit more", "Any style", "Any room"]
-    assert chat("around $10k")["suggestions"] == ["Show more", "Cheaper", "A bit more"]
+        "Show more", "Cheaper", "A bit more", "Compare these", "Any style", "Any room"]
+    assert chat("around $10k")["suggestions"] == ["Show more", "Cheaper", "A bit more", "Compare these"]
 
 
 def test_every_chip_is_understood(kitchens):
     for chip in chat("modern kitchen around $10k")["suggestions"]:
         result = chat("modern kitchen around $10k", chip)
-        assert result["projects"] or result["reply"].startswith("That's everything"), chip
+        assert result["projects"] or result.get("comparison") or result["reply"].startswith("That's everything"), chip
 
 
 def test_start_chips_when_nothing_is_known(app):

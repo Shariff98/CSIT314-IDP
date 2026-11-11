@@ -33,6 +33,7 @@ STRICT_BANDS = [
     ("Saves you a little", 0.93, 0.97),
     ("Saves you more", None, 0.93),
 ]
+COMPARE_WORDS = re.compile(r"\b(compare|comparison|side by side|which is better|difference between)\b", re.IGNORECASE)
 PRICE_STEPS = {"cheaper": 0.8, "pricier": 1.25}
 MAX_SEEN = 60
 START_CHIPS = ["Modern kitchen around $10k", "Bedroom between $8k and $12k", "What can you do?"]
@@ -191,6 +192,9 @@ class RecommendIDPsController:
         except LLMUnavailable:
             prefs, source = budget_parser.parse(message, categories, styles), "fallback"
         prefs = self._clean(prefs, message, categories, styles)
+        if COMPARE_WORDS.search(message):
+            previous = self._clean(context or {}, "", categories, styles)
+            return self._compare(message, previous, source, customer_id)
         said_nothing_new = not any(prefs[f] for f in MEMORY_FIELDS)
         intent = budget_parser.detect_intent(message)
         if said_nothing_new and (intent or not context):
@@ -240,6 +244,55 @@ class RecommendIDPsController:
             reply = self.template_reply(budget, projects, relaxed, prefs["budget_min"])
         return self._answer(reply, projects, relaxed, source, message, prefs, customer_id)
 
+    # ---------- compare ----------
+    def _compare(self, message, previous, source, customer_id):
+        """Side-by-side facts for 2 to 4 published projects: "#12 vs #15", or the last ones shown.
+
+        Pure database facts, no LLM, so nothing in the comparison can be made up.
+        """
+        ids = list(dict.fromkeys(int(n) for n in re.findall(r"#(\d+)", message)))
+        if len(ids) < 2:
+            ids = previous["seen_ids"][-3:]
+        idps = IDP.find_published(ids[:4])
+        prefs = {**previous, "seen_ids": previous["seen_ids"]}
+        if len(idps) < 2:
+            return self._answer("Tell me which projects to compare, like \"compare #12 and #15\", "
+                                "or search first and tap Compare these.", [], [], source, message, prefs, customer_id)
+        rows = [self.comparison_row(idp, previous) for idp in idps]
+        reply = self.comparison_reply(rows, previous)
+        result = self._answer(reply, [], [], source, message, prefs, customer_id)
+        result["comparison"] = rows
+        return result
+
+    @staticmethod
+    def comparison_row(idp, prefs):
+        budget = prefs.get("budget")
+        return {"id": idp.id, "title": idp.title, "budget": idp.budget, "category": idp.category,
+                "styles": idp.styles, "property_type": idp.property_type or "", "location": idp.location or "",
+                "designer": idp.designer_name or "", "views": idp.views, "saves": idp.saves,
+                "vs_budget": idp.budget - budget if budget else None,
+                "matches": round(preference_match(idp, prefs) * 100) if budget else None,
+                "url": f"/idp/{idp.id}"}
+
+    @staticmethod
+    def comparison_reply(rows, prefs):
+        """One line per project that wins something, e.g. "#12 Oak Kitchen: cheapest, closest to your $10,000"."""
+        wins = {}
+
+        def win(row, reason):
+            wins.setdefault(row["id"], (row, []))[1].append(reason)
+
+        win(min(rows, key=lambda r: (r["budget"], r["id"])), f"cheapest at {money(min(r['budget'] for r in rows))}")
+        popular = max(rows, key=lambda r: (r["saves"] * 2 + r["views"], -r["id"]))
+        win(popular, f"most popular ({popular['saves']} saves, {popular['views']} views)")
+        if prefs.get("budget"):
+            win(min(rows, key=lambda r: (abs(r["vs_budget"]), r["budget"])), f"closest to your {money(prefs['budget'])}")
+            if len({r["matches"] for r in rows}) > 1:
+                win(max(rows, key=lambda r: (r["matches"], -abs(r["vs_budget"]))), "best match for what you asked")
+        lines = [f"Comparing {len(rows)} projects:"]
+        lines += [f"- #{row['id']} {row['title']}: {', '.join(reasons)}" for row, reasons in wins.values()]
+        return "\n".join(lines)
+
     # ---------- steps ----------
     @staticmethod
     def merge(previous, new):
@@ -269,7 +322,7 @@ class RecommendIDPsController:
         """Follow-up chips. Each one is plain text the parser understands, so typing it works the same."""
         if not projects:
             return [] if prefs.get("budget") or prefs.get("category") else START_CHIPS
-        chips = ["Show more", "Cheaper", "A bit more"]
+        chips = ["Show more", "Cheaper", "A bit more"] + (["Compare these"] if len(projects) >= 2 else [])
         if prefs.get("styles"):
             chips.append("Any style")
         if prefs.get("category"):

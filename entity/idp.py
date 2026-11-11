@@ -138,6 +138,18 @@ class IDP:
             rows = conn.execute(sql, params).fetchall()
         return [cls._from_row(r) for r in rows]
 
+    @classmethod
+    def find_published(cls, ids):
+        """Published projects with these ids, in the order given, with saves and designer name (chat compare)."""
+        ids = [int(i) for i in ids]
+        if not ids:
+            return []
+        sql = (f"SELECT i.*, {SAVES} AS saves, {DESIGNER} AS designer_name FROM idp i "
+               f"WHERE i.published = 1 AND i.id IN ({','.join('?' for _ in ids)})")
+        with get_connection() as conn:
+            by_id = {r["id"]: cls._from_row(r) for r in conn.execute(sql, ids).fetchall()}
+        return [by_id[i] for i in ids if i in by_id]
+
     @staticmethod
     def known_styles():
         """Every style tag used by a published project, sorted."""
