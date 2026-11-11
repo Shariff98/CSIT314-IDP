@@ -31,3 +31,6 @@
 .cw-form input { flex: 1; padding: 8px; border: 1px solid #ccd; border-radius: 6px; }
 .cw-form button { padding: 8px 14px; border: none; border-radius: 6px; background: #2f6fed; color: #fff; cursor: pointer; }
 .cw-form button:disabled { opacity: .5; cursor: default; }
+.cw-memory { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 12px;
+  background: #f5f8ff; border-bottom: 1px solid #e3e9f7; font-size: 13px; color: #334; }
+.cw-memory button { border: none; background: none; color: #2f6fed; cursor: pointer; font-size: 13px; padding: 0; white-space: nowrap; }
