@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: design-match
+    runtime: docker
+    plan: free
+    healthCheckPath: /login
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      # Paste your Groq key in the Render dashboard when asked. Never put it in this file.
+      - key: LLM_API_KEY
+        sync: false
