@@ -48,3 +48,6 @@
 .cw-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .cw-compare table { min-width: 0; }
 .cw-compare th { text-transform: none; letter-spacing: normal; font-size: 12px; }
+.cw-reasons { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.cw-reasons span { font-size: 11px; background: #eef7f0; color: #2c6b3f; border-radius: 4px; padding: 1px 6px; }
+.cw-launcher:focus-visible, .cw-panel button:focus-visible, .cw-card:focus-visible { outline: 2px solid #1d4fb8; outline-offset: 2px; }
