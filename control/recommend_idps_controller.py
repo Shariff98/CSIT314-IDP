@@ -33,12 +33,26 @@ STRICT_BANDS = [
     ("Saves you a little", 0.93, 0.97),
     ("Saves you more", None, 0.93),
 ]
+PRICE_STEPS = {"cheaper": 0.8, "pricier": 1.25}
+MAX_SEEN = 60
+START_CHIPS = ["Modern kitchen around $10k", "Bedroom between $8k and $12k", "What can you do?"]
+RANGE_BANDS = ["Lower end of your range", "Middle of your range", "Top of your range"]
 RELAX_NOTES = {
     "style": "I couldn't find enough in that style, so I included other styles.",
     "category": "I couldn't find enough in that category, so I included other rooms.",
     "budget_window": "I widened the price range a little to find enough options.",
 }
-MEMORY_FIELDS = ("budget", "category", "styles", "property_type", "location")
+MEMORY_FIELDS = ("budget", "category", "styles", "exclude_styles", "property_type", "location")
+SMALL_TALK = {
+    "greeting": "Hi! I find interior design projects that fit your budget. Tell me the room, a style you like "
+                "and your budget, for example \"Scandinavian bedroom around $12k\".",
+    "thanks": "You're welcome! Tell me if you'd like to try another room, style or budget.",
+    "help": "I match you with published design projects. You can tell me:\n"
+            "- a room and budget: \"kitchen around $10k\" or \"between $8k and $12k\"\n"
+            "- styles you like or don't: \"Japandi, but not industrial\"\n"
+            "- a hard limit: \"no more than $15,000\"\n"
+            "I remember what you said, so \"what about bathrooms?\" works. Say \"start over\" to reset.",
+}
 FORGET_WORDS = {"styles": re.compile(r"\bany (?:style|look)\b", re.IGNORECASE),
                 "category": re.compile(r"\bany (?:room|category|space)\b", re.IGNORECASE)}
 RESET_WORDS = re.compile(r"\b(start over|start again|new search|reset|forget (?:it|that|everything))\b", re.IGNORECASE)
@@ -49,7 +63,10 @@ class LLMUnavailable(Exception):
 
 
 # ---------- pure ranking functions (unit tested directly) ----------
-def budget_window(budget, strict_max=False, widened=False):
+def budget_window(budget, strict_max=False, widened=False, budget_min=None):
+    """The price window to search. A range ("$8k to $12k") keeps its top and only lowers its floor when widened."""
+    if budget_min:
+        return (round(budget_min * WINDOW_LOW) if widened else budget_min), budget
     if strict_max:
         return round(budget * (STRICT_WIDENED_LOW if widened else WINDOW_LOW)), budget
     return round(budget * WINDOW_LOW), round(budget * (WIDENED_HIGH if widened else WINDOW_HIGH))
@@ -87,7 +104,7 @@ def preference_match(idp, prefs):
 
 def score_candidates(candidates, prefs, low, high):
     """Returns [(idp, score)] sorted best first. Ties go to the cheaper, then older project."""
-    budget = prefs["budget"]
+    budget = target_price(prefs)
     popularity = [c.saves * 2 + c.views for c in candidates]
     top = max(popularity, default=0) or 1
     scored = []
@@ -99,20 +116,35 @@ def score_candidates(candidates, prefs, low, high):
     return sorted(scored, key=lambda pair: (-pair[1], pair[0].budget, pair[0].id))
 
 
-def band_of(price, budget, strict_max=False):
+def target_price(prefs):
+    """The price that scores best: the budget, or the middle of a range."""
+    if prefs.get("budget_min"):
+        return round((prefs["budget_min"] + prefs["budget"]) / 2)
+    return prefs["budget"]
+
+
+def band_labels(strict_max=False, budget_min=None):
+    if budget_min:
+        return RANGE_BANDS
+    return [label for label, _, _ in (STRICT_BANDS if strict_max else BANDS)]
+
+
+def band_of(price, budget, strict_max=False, budget_min=None):
+    if budget_min:  # thirds of the range
+        third = (budget - budget_min) / 3
+        return RANGE_BANDS[0 if price <= budget_min + third else 1 if price <= budget_min + 2 * third else 2]
     for label, start, end in (STRICT_BANDS if strict_max else BANDS):
         if (start is None or price > budget * start) and (end is None or price <= budget * end):
             return label
     return (STRICT_BANDS if strict_max else BANDS)[-1][0]
 
 
-def pick_three(scored, budget, strict_max=False):
+def pick_three(scored, budget, strict_max=False, budget_min=None):
     """Best project in each price band, preferring 3 different designers.
 
     Empty bands are filled from the rest by score. Returns [(idp, score, label)]
     ordered by price.
     """
-    bands = STRICT_BANDS if strict_max else BANDS
     chosen, designers = [], set()
 
     def take(pool):
@@ -124,12 +156,12 @@ def pick_three(scored, budget, strict_max=False):
         chosen.append(pick)
         designers.add(pick[0].designer_id)
 
-    for label, _, _ in bands:
-        take([p for p in scored if band_of(p[0].budget, budget, strict_max) == label])
+    for label in band_labels(strict_max, budget_min):
+        take([p for p in scored if band_of(p[0].budget, budget, strict_max, budget_min) == label])
     while len(chosen) < 3 and len(chosen) < len(scored):
         take(scored)
     chosen.sort(key=lambda p: p[0].budget)
-    return [(idp, score, band_of(idp.budget, budget, strict_max)) for idp, score in chosen]
+    return [(idp, score, band_of(idp.budget, budget, strict_max, budget_min)) for idp, score in chosen]
 
 
 def money(amount):
@@ -159,12 +191,23 @@ class RecommendIDPsController:
         except LLMUnavailable:
             prefs, source = budget_parser.parse(message, categories, styles), "fallback"
         prefs = self._clean(prefs, message, categories, styles)
+        said_nothing_new = not any(prefs[f] for f in MEMORY_FIELDS)
+        intent = budget_parser.detect_intent(message)
+        if said_nothing_new and (intent or not context):
+            return self._answer(SMALL_TALK[intent or "help"], [], [], source, message, prefs, customer_id)
         if context and not RESET_WORDS.search(message):
             previous = self._clean(context, "", categories, styles)
             for field, words in FORGET_WORDS.items():
                 if words.search(message):
                     previous[field] = [] if field == "styles" else None
+                    if field == "styles":
+                        previous["exclude_styles"] = []
+            followup = budget_parser.detect_followup(message)
+            new_budget = prefs["budget"]
             prefs = self.merge(previous, prefs)
+            if followup in PRICE_STEPS and new_budget is None and prefs["budget"]:
+                prefs = self.step_budget(prefs, PRICE_STEPS[followup])
+            prefs["seen_ids"] = previous["seen_ids"] if followup == "more" else []
 
         budget = prefs["budget"]
         if budget is None:
@@ -175,11 +218,15 @@ class RecommendIDPsController:
                                 [], [], source, message, prefs, customer_id)
 
         candidates, relaxed, (low, high) = self._find_candidates(prefs)
+        if not candidates and prefs["seen_ids"]:
+            return self._answer("That's everything I have for this search. Try a different budget, room or style.",
+                                [], relaxed, source, message, prefs, customer_id)
         if not candidates:
             return self._answer(f"I couldn't find any published projects near {money(budget)}. "
                                 "Try a different budget or room.", [], relaxed, source, message, prefs, customer_id)
 
-        picks = pick_three(score_candidates(candidates, prefs, low, high), budget, prefs["strict_max"])
+        picks = pick_three(score_candidates(candidates, prefs, low, high), budget, prefs["strict_max"],
+                           prefs["budget_min"])
         projects = [self._card(idp, score, label) for idp, score, label in picks]
 
         reply = None
@@ -190,7 +237,7 @@ class RecommendIDPsController:
                 reply = None
             reply = self.remove_unknown_ids(reply or "", {p["id"] for p in projects})
         if not reply:
-            reply = self.template_reply(budget, projects, relaxed)
+            reply = self.template_reply(budget, projects, relaxed, prefs["budget_min"])
         return self._answer(reply, projects, relaxed, source, message, prefs, customer_id)
 
     # ---------- steps ----------
@@ -198,11 +245,36 @@ class RecommendIDPsController:
     def merge(previous, new):
         """New values win; anything the new message left empty comes from the previous turn.
 
-        strict_max belongs to the budget: it only carries over when the budget does.
+        strict_max and budget_min belong to the budget: they only carry over when the budget does.
+        Excluded styles add up across messages.
         """
         merged = {f: new[f] or previous[f] for f in MEMORY_FIELDS}
-        merged["strict_max"] = new["strict_max"] if new["budget"] is not None else previous["strict_max"]
+        source = new if new["budget"] is not None else previous
+        merged["strict_max"], merged["budget_min"] = source["strict_max"], source["budget_min"]
+        # Liking a style you excluded earlier (or the other way round) cancels the old choice.
+        merged["styles"] = [s for s in merged["styles"] if s not in new["exclude_styles"]]
+        excluded = list(dict.fromkeys(previous["exclude_styles"] + new["exclude_styles"]))  # "and no rustic" adds up
+        merged["exclude_styles"] = [s for s in excluded if s not in new["styles"]]
         return merged
+
+    @staticmethod
+    def step_budget(prefs, factor):
+        """"Cheaper" / "a bit more": move the budget (and a range's floor) by factor, to the nearest $100."""
+        def step(amount):
+            return int(round(amount * factor / 100) * 100) if amount else amount
+        return {**prefs, "budget": step(prefs["budget"]), "budget_min": step(prefs["budget_min"])}
+
+    @staticmethod
+    def suggestions(prefs, projects):
+        """Follow-up chips. Each one is plain text the parser understands, so typing it works the same."""
+        if not projects:
+            return [] if prefs.get("budget") or prefs.get("category") else START_CHIPS
+        chips = ["Show more", "Cheaper", "A bit more"]
+        if prefs.get("styles"):
+            chips.append("Any style")
+        if prefs.get("category"):
+            chips.append("Any room")
+        return chips
 
     @staticmethod
     def ask_budget(prefs):
@@ -220,15 +292,31 @@ class RecommendIDPsController:
         except (TypeError, ValueError):
             budget = budget_parser.parse_budget(message)
         category = prefs.get("category") if prefs.get("category") in categories else None
-        wanted = prefs.get("styles") if isinstance(prefs.get("styles"), list) else []
         by_lower = {s.lower(): s for s in styles}
+
+        def known(key):
+            names = prefs.get(key) if isinstance(prefs.get(key), list) else []
+            return list(dict.fromkeys(by_lower[s.lower()] for s in names if isinstance(s, str) and s.lower() in by_lower))
+
+        excluded = known("exclude_styles")
+        seen = prefs.get("seen_ids") if isinstance(prefs.get("seen_ids"), list) else []
+        seen = [n for n in seen if isinstance(n, int) and not isinstance(n, bool)][-MAX_SEEN:]
+        try:
+            budget_min = int(round(float(prefs.get("budget_min"))))
+        except (TypeError, ValueError):
+            budget_min = None
+        if budget is None or budget_min is None or not 0 < budget_min < budget:
+            budget_min = None
         return {
             "budget": budget,
+            "budget_min": budget_min,
             "category": category,
-            "styles": [by_lower[s.lower()] for s in wanted if isinstance(s, str) and s.lower() in by_lower],
+            "styles": [s for s in known("styles") if s not in excluded],
+            "exclude_styles": excluded,
             "property_type": prefs.get("property_type") if isinstance(prefs.get("property_type"), str) else None,
             "location": prefs.get("location") if isinstance(prefs.get("location"), str) else None,
-            "strict_max": bool(prefs.get("strict_max")),
+            "strict_max": bool(prefs.get("strict_max")) or budget_min is not None,
+            "seen_ids": seen,
         }
 
     @staticmethod
@@ -236,8 +324,9 @@ class RecommendIDPsController:
         """Search, relaxing filters in this order until 3 are found: style, category, price window."""
         category, styles, widened, relaxed = prefs["category"], prefs["styles"], False, []
         while True:
-            low, high = budget_window(prefs["budget"], prefs["strict_max"], widened)
-            found = IDP.find_in_budget(low, high, category, styles)
+            low, high = budget_window(prefs["budget"], prefs["strict_max"], widened, prefs["budget_min"])
+            found = [idp for idp in IDP.find_in_budget(low, high, category, styles)
+                     if not set(idp.styles) & set(prefs["exclude_styles"]) and idp.id not in prefs["seen_ids"]]
             if len(found) >= 3:
                 return found, relaxed, (low, high)
             if styles:
@@ -269,8 +358,9 @@ class RecommendIDPsController:
         return "\n".join(kept).strip()
 
     @staticmethod
-    def template_reply(budget, projects, relaxed):
-        lines = [f"Here are {len(projects)} projects for a budget of {money(budget)}:"]
+    def template_reply(budget, projects, relaxed, budget_min=None):
+        span = f"{money(budget_min)} to {money(budget)}" if budget_min else f"a budget of {money(budget)}"
+        lines = [f"Here are {len(projects)} projects for {span}:"]
         lines += [f"- #{p['id']} {p['title']}, {money(p['budget'])} ({p['label']})" for p in projects]
         lines += [RELAX_NOTES[r] for r in relaxed]
         return "\n".join(lines)
@@ -278,4 +368,7 @@ class RecommendIDPsController:
     @staticmethod
     def _answer(reply, projects, relaxed, source, message, prefs, customer_id):
         ChatLog.record(message, prefs, [p["id"] for p in projects], source, customer_id)
-        return {"reply": reply, "projects": projects, "relaxed": relaxed, "source": source, "prefs": prefs}
+        seen = (prefs.get("seen_ids", []) + [p["id"] for p in projects])[-MAX_SEEN:]
+        prefs = {**prefs, "seen_ids": seen}
+        return {"reply": reply, "projects": projects, "relaxed": relaxed, "source": source, "prefs": prefs,
+                "suggestions": RecommendIDPsController.suggestions(prefs, projects)}

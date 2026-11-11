@@ -20,6 +20,40 @@ CATEGORY_WORDS = {
     "Living Room": ["living room", "living", "lounge", "family room"],
     "Office": ["office", "study", "workspace"],
 }
+# Everyday words for the style tags designers use. Only names that exist in the data are kept.
+STYLE_WORDS = {
+    "Scandinavian": ["scandi", "nordic"],
+    "Minimalist": ["minimal", "minimalistic", "clean and simple"],
+    "Japandi": ["japanese", "wabi sabi", "zen"],
+    "Industrial": ["loft", "exposed brick", "raw concrete"],
+    "Classic": ["traditional", "vintage", "timeless"],
+    "Rustic": ["farmhouse", "cottage", "country"],
+    "Luxury": ["luxurious", "high end", "high-end", "premium", "opulent"],
+    "Tropical": ["bali", "balinese", "resort"],
+    "Modern": ["sleek"],
+    "Contemporary": ["current", "trendy"],
+}
+NEGATION = r"(?:not|no|without|except|avoid|anything but|nothing|don'?t want|do not want|hate|dislike)"
+# "between $8k and $12k", "8-12k", "from 8,000 to 12,000"
+RANGE = re.compile(
+    r"(?:between|from)?\s*\$?\s?(?P<low>\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?(?P<low_suffix>k|m|thousand)?"
+    r"\s*(?:-|–|to|and)\s*"
+    r"\$?\s?(?P<high>\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?(?P<high_suffix>k|m|thousand|million)?\b",
+    re.IGNORECASE,
+)
+INTENTS = {
+    "greeting": re.compile(r"^\s*(hi|hello|hey|hiya|yo|good (morning|afternoon|evening))\b", re.IGNORECASE),
+    "thanks": re.compile(r"\b(thanks|thank you|thx|cheers|appreciate it)\b", re.IGNORECASE),
+    "help": re.compile(r"\b(help|what can you do|how does this work|how do you work|who are you)\b", re.IGNORECASE),
+}
+# Follow-ups that only make sense after a search (the chat chips send these words too).
+FOLLOWUPS = {
+    "more": re.compile(r"\b(show (?:me )?more|more options|other options|something else|different ones|see more)\b",
+                       re.IGNORECASE),
+    "cheaper": re.compile(r"\b(cheaper|less expensive|lower (?:the )?budget|spend less|too expensive)\b", re.IGNORECASE),
+    "pricier": re.compile(r"\b(a bit more|pricier|more expensive|higher budget|bigger budget|spend more|stretch)\b",
+                          re.IGNORECASE),
+}
 PROPERTY_WORDS = {"HDB": ["hdb"], "Condo": ["condo", "condominium", "apartment"],
                   "Landed": ["landed", "house", "terrace", "bungalow"], "Commercial": ["commercial", "shop"]}
 
@@ -46,10 +80,68 @@ def parse_budget(text):
     return None
 
 
+def _amount(number, suffix):
+    value = float(number.replace(",", ""))
+    suffix = (suffix or "").lower()
+    if suffix in ("k", "thousand"):
+        value *= 1_000
+    elif suffix in ("m", "million"):
+        value *= 1_000_000
+    return int(round(value))
+
+
+def parse_range(text):
+    """Returns (low, high) for "between $8k and $12k" or "8-12k", else None.
+
+    A suffix on the second number also applies to the first ("8-12k" is 8,000 to
+    12,000). Both ends must be 1,000 or more and low must be below high, so
+    "2 to 3 bedrooms" is not a range.
+    """
+    for match in RANGE.finditer(text or ""):
+        high = _amount(match.group("high"), match.group("high_suffix"))
+        low = _amount(match.group("low"), match.group("low_suffix") or match.group("high_suffix"))
+        if 1_000 <= low < high:
+            return low, high
+    return None
+
+
+def detect_intent(text):
+    """"greeting", "thanks" or "help" for small talk, else None."""
+    for name, pattern in INTENTS.items():
+        if pattern.search(text or ""):
+            return name
+    return None
+
+
+def detect_followup(text):
+    """"more", "cheaper" or "pricier" for a follow-up to the last search, else None."""
+    for name, pattern in FOLLOWUPS.items():
+        if pattern.search(text or ""):
+            return name
+    return None
+
+
+def _style_terms(style):
+    return [style.lower()] + STYLE_WORDS.get(style, [])
+
+
+def find_styles(text, styles):
+    """(wanted, excluded) style names. "not industrial" or "no rustic please" goes in excluded."""
+    lowered = (text or "").lower()
+    wanted, excluded = [], []
+    for style in styles:
+        terms = "|".join(re.escape(t) for t in _style_terms(style))
+        if re.search(rf"\b{NEGATION}\s+(?:(?:too|very|anything|the|a|any)\s+)?(?:{terms})\b", lowered):
+            excluded.append(style)
+        elif re.search(rf"\b(?:{terms})\b", lowered):
+            wanted.append(style)
+    return wanted, excluded
+
+
 def _find(words_by_name, text):
     lowered = f" {text.lower()} "
     for name, words in words_by_name.items():
-        if any(re.search(rf"\b{re.escape(w)}\b", lowered) for w in words):
+        if any(re.search(rf"\b{re.escape(w)}s?\b", lowered) for w in words):
             return name
     return None
 
@@ -57,14 +149,22 @@ def _find(words_by_name, text):
 def parse(text, categories=(), styles=()):
     """Plain-text version of the LLM's first step."""
     lowered = (text or "").lower()
-    category = _find(CATEGORY_WORDS, text or "")
-    if category not in categories:
-        category = next((c for c in categories if c.lower() in lowered), None)
+    # An exact category name wins over a synonym, so "study" finds Study when it exists, not Office.
+    category = next((c for c in sorted(categories, key=len, reverse=True)
+                     if re.search(rf"\b{re.escape(c.lower())}s?\b", lowered)), None)
+    if category is None:
+        category = _find(CATEGORY_WORDS, text or "")
+        if category not in categories:
+            category = None
+    wanted, excluded = find_styles(text, styles)
+    budget_range = parse_range(text)
     return {
-        "budget": parse_budget(text),
+        "budget": budget_range[1] if budget_range else parse_budget(text),
+        "budget_min": budget_range[0] if budget_range else None,
         "category": category,
-        "styles": [s for s in styles if re.search(rf"\b{re.escape(s.lower())}\b", lowered)],
+        "styles": wanted,
+        "exclude_styles": excluded,
         "property_type": _find(PROPERTY_WORDS, text or ""),
         "location": None,
-        "strict_max": bool(STRICT_WORDS.search(text or "")),
+        "strict_max": bool(budget_range) or bool(STRICT_WORDS.search(text or "")),
     }
