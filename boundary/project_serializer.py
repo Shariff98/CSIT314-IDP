@@ -21,9 +21,20 @@ def company_json(company):
 
 
 def project_json(project):
+    # Cover photo first, so every card and detail page shows the cover the designer chose.
+    photos = sorted(project.photos(), key=lambda photo: not photo.is_cover)
     result = {field: getattr(project, field) for field in PROJECT_FIELDS}
     result.update(style_tags=project.style_tag_list, published=project.is_published,
                   photos=[{"id": photo.id, "url": url_for("idp.uploaded", filename=photo.filename),
-                           "is_cover": bool(photo.is_cover)} for photo in project.photos()],
+                           "is_cover": bool(photo.is_cover)} for photo in photos],
                   company=company_json(project.company()))
     return result
+
+
+def owner_project_json(project):
+    """What the designer sees of their own project: the public fields plus its shortlist count (US-46)."""
+    return {**project_json(project), "shortlists": project.shortlist_count()}
+
+
+def team_json(member):
+    return {"id": member.id, "name": member.name, "position": member.position}

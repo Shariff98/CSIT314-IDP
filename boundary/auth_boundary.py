@@ -1,5 +1,5 @@
 """Boundary: LoginPage (US-23), Log out link (US-01), RegisterPage (US-43)."""
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 
 from boundary.common import home_page
 from control.login_controller import LoginController
@@ -92,6 +92,8 @@ def login():
 def logout():
     if LogoutController().logout(session):
         flash("You have been logged out.", "success")
+    if current_app.config.get("REACT_APP"):
+        return redirect("/#/login")   # production: one front door, the React app
     return redirect(url_for("auth.login"))
 
 

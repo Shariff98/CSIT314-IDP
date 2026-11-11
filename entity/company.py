@@ -64,6 +64,38 @@ class Company:
         return cls._from_row(row)
 
     @classmethod
+    def search(cls, keyword="", specialisation=None, service_area=None, max_budget=None):
+        """Companies customers can browse: the designer's account is active.
+
+        Returns [(company, published_project_count)], companies with the most projects first.
+        max_budget keeps companies whose minimum budget is at or below it.
+        """
+        where = ["a.role = 'InteriorDesigner'", "a.status = 'Active'"]
+        params = []
+        if keyword:
+            like = f"%{keyword}%"
+            where.append("(c.name LIKE ? OR c.description LIKE ? OR c.specialisations LIKE ? OR c.services LIKE ?)")
+            params += [like] * 4
+        for column, value in (("specialisations", specialisation), ("service_areas", service_area)):
+            if value:
+                where.append(f"(',' || REPLACE(c.{column}, ', ', ',') || ',') LIKE ?")
+                params.append(f"%,{value},%")
+        if max_budget is not None:
+            where.append("(c.budget_min IS NULL OR c.budget_min <= ?)")
+            params.append(max_budget)
+        sql = ("SELECT c.*, (SELECT COUNT(*) FROM idp i WHERE i.designer_id = c.designer_id AND i.published = 1) "
+               "AS project_count FROM company c JOIN user_account a ON a.id = c.designer_id "
+               f"WHERE {' AND '.join(where)} ORDER BY project_count DESC, c.name")
+        with get_connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        results = []
+        for row in rows:
+            values = dict(row)
+            count = values.pop("project_count")
+            results.append((Company(**values), count))
+        return results
+
+    @classmethod
     def registration_taken(cls, registration_no, except_id=None):
         with get_connection() as conn:
             row = conn.execute("SELECT id FROM company WHERE registration_no = ? AND id IS NOT ?",

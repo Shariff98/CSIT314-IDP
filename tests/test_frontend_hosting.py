@@ -50,3 +50,19 @@ def test_off_by_default(tmp_path):
 
 def test_missing_dist_folder_is_ignored(tmp_path):
     assert make_app(tmp_path, str(tmp_path / "nothing")).get("/login").status_code == 200
+
+
+def test_logging_out_of_the_flask_pages_returns_to_the_react_app(tmp_path):
+    client = make_app(tmp_path, make_dist(tmp_path))
+    res = client.get("/logout")
+    assert res.status_code == 302 and res.headers["Location"].endswith("/#/login")
+
+
+def test_logout_without_react_keeps_the_html_login_page(tmp_path):
+    res = make_app(tmp_path, None).get("/logout")
+    assert res.headers["Location"].endswith("/login")
+
+
+def test_unknown_api_paths_are_json_even_with_react_served(tmp_path):
+    res = make_app(tmp_path, make_dist(tmp_path)).get("/api/missing")
+    assert res.status_code == 404 and res.json["error"]["code"] == "not_found"
