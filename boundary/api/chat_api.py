@@ -8,6 +8,8 @@ Response: 200 {"reply": str, "projects": [card, ...], "relaxed": [str], "source"
                "suggestions": [str]}  follow-up chips; each is a message the bot understands
           400 {"error": str}  empty or too long message
           429 {"error": str}  more than CHAT_RATE_LIMIT messages in an hour
+
+GET /api/chat/status[?check=1]: {"configured", "provider", "model", "fallback_model", "last_call", "check"}
 """
 from flask import Blueprint, current_app, jsonify, request, session
 
@@ -46,3 +48,19 @@ def chat():
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     return jsonify(result)
+
+
+@bp.get("/chat/status")
+def chat_status():
+    """Is the AI service really being used? Shows whether a key is set (never the key), the model,
+    and how the last call went. ?check=1 also makes one tiny live request (counts against the
+    same rate limit as chat messages). Open it on Render after setting LLM_API_KEY."""
+    gateway = current_app.config["LLM_GATEWAY"]
+    status = gateway.status() if hasattr(gateway, "status") else {"configured": None}
+    if request.args.get("check") == "1" and hasattr(gateway, "ping"):
+        client = f"ip:{request.headers.get('X-Forwarded-For', request.remote_addr)}"
+        if not _limiter().allow(client):
+            return jsonify(error="Too many checks. Please try again in a while."), 429
+        status["check"] = gateway.ping()
+        status["last_call"] = gateway.status().get("last_call")
+    return jsonify(status)

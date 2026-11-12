@@ -8,5 +8,13 @@ services:
       - key: SECRET_KEY
         generateValue: true
       # Paste your Groq key in the Render dashboard when asked. Never put it in this file.
+      # After deploying, open /api/chat/status?check=1 to confirm the chatbot really reaches Groq.
       - key: LLM_API_KEY
         sync: false
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: openai/gpt-oss-120b
+      # Used automatically if Groq retires or rejects LLM_MODEL.
+      - key: LLM_FALLBACK_MODEL
+        value: openai/gpt-oss-20b

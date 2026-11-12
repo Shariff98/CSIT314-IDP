@@ -1,32 +1,46 @@
+// Which pages each role may open, and where each role starts.
+
+// Roles that use the React app, and the page each lands on after logging in.
 export const homeForRole = {
-  Customer: 'customer-home',
-  InteriorDesigner: 'designer-dashboard',
-  UserAdmin: 'admin-dashboard',
-  PlatformManager: 'manager-categories',
+  Customer: 'landing',
+  InteriorDesigner: 'dashboard',
 };
+
+// Roles whose pages are the Flask (Jinja) administration pages. React logs them in, then
+// hands over to these addresses; the Flask session cookie is shared, so no second login.
+export const flaskHomeForRole = {
+  UserAdmin: '/admin/accounts',
+  PlatformManager: '/platform/',
+};
+
+const PUBLIC_PAGES = new Set(['landing', 'login', 'register', 'projects', 'project', 'designers', 'designer']);
+const CUSTOMER_PAGES = new Set(['favourites']);
+const DESIGNER_PAGES = new Set(['dashboard', 'portfolio', 'portfolio-new', 'portfolio-item', 'company']);
 
 export function unauthenticatedMessage(wasAuthenticated, currentMessage = '') {
   return wasAuthenticated ? 'Your session has expired. Please log in again.' : currentMessage;
 }
 
-// Only select a role home during startup, never during later public navigation.
-export function initialPage(page, user, explicitlySelected = false, isRoot = true) {
-  return !explicitlySelected && isRoot && page === 'landing' && user
-    ? homeForRole[user.role] || page
-    : page;
+// On first load, a logged-in user opening the bare address goes to their role's home.
+export function initialPage(page, user) {
+  return page === 'landing' && user ? homeForRole[user.role] || page : page;
 }
 
 export function canAccessPage(page, user) {
-  if (page === 'designer-profile') return true;
-  if (page.startsWith('customer-')) return user?.role === 'Customer';
-  if (page.startsWith('designer-')) return user?.role === 'InteriorDesigner';
-  if (page === 'admin-categories' || page.startsWith('manager-')) return user?.role === 'PlatformManager';
-  if (page.startsWith('admin-')) return user?.role === 'UserAdmin';
-  return true;
+  if (PUBLIC_PAGES.has(page)) return true;
+  if (CUSTOMER_PAGES.has(page)) return user?.role === 'Customer';
+  if (DESIGNER_PAGES.has(page)) return user?.role === 'InteriorDesigner';
+  return false;
+}
+
+// Where to send someone who opened a page they may not see.
+export function fallbackPage(user) {
+  return user ? homeForRole[user.role] || 'landing' : 'login';
 }
 
 export function publicUser(user) {
-  if (!user || !user.id || typeof user.name !== 'string' || !Object.hasOwn(homeForRole, user.role)) {
+  const known = Object.hasOwn(homeForRole, user?.role) || Object.hasOwn(flaskHomeForRole, user?.role);
+  if (!user || !user.id || typeof user.name !== 'string' || !known) {
     throw new Error('This account role is not supported by this application.');
   }
   return { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status };

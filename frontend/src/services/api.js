@@ -1,8 +1,8 @@
 // =============================================================
 // BACKEND INTEGRATION LAYER
 // =============================================================
-// flaskApi exposes the implemented backend endpoints. The existing api
-// export stays mock-based until AppContext and pages are migrated.
+// Every call goes to the Flask JSON API (same address in production; Vite proxies
+// /api in development). There is no mock data: what the page shows is what Flask stored.
 // =============================================================
 
 export const API_BASE_URL = '/api';
@@ -56,87 +56,82 @@ export async function apiRequest(endpoint, options = {}) {
   return payload;
 }
 
-const postJson = (endpoint, payload) => apiRequest(endpoint, {
-  method: 'POST',
+const sendJson = (method) => (endpoint, payload) => apiRequest(endpoint, {
+  method,
   ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
 });
+const postJson = sendJson('POST');
+const putJson = sendJson('PUT');
+const remove = (endpoint) => apiRequest(endpoint, { method: 'DELETE' });
+
+// multipart/form-data upload: the browser sets the Content-Type boundary itself.
+function upload(endpoint, fields) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.append(key, value);
+  return apiRequest(endpoint, { method: 'POST', body: form });
+}
+
+export function queryString(params = {}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+  }
+  return query.size ? `?${query}` : '';
+}
+
+const id = (value) => encodeURIComponent(value);
 
 export const flaskApi = {
+  // ----- accounts (US-23 log in, US-01 log out, US-43 register) -----
   login: (payload) => postJson('/auth/login', payload),
   registerCustomer: (payload) => postJson('/customers/register', payload),
   getCurrentUser: () => apiRequest('/auth/me'),
   logout: () => postJson('/auth/logout'),
-  getProjects: (params = {}, options = {}) => {
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
-    }
-    return apiRequest(`/idps${query.size ? `?${query}` : ''}`, options);
-  },
+
+  // ----- published projects (US-07, 28, 17, 18 browse/search/filter/sort; US-34 details) -----
+  getProjects: (params = {}, options = {}) => apiRequest(`/idps${queryString(params)}`, options),
   getProjectOptions: () => apiRequest('/idps/options'),
-  createPortfolioProject: (payload) => postJson('/designer/portfolio', payload),
-  getMyPortfolio: (params = {}, options = {}) => {
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
-    }
-    return apiRequest(`/designer/portfolio${query.size ? `?${query}` : ''}`, options);
-  },
-  saveProject: (id) => postJson(`/favourites/projects/${encodeURIComponent(id)}`),
-  removeSavedProject: (id) => apiRequest(`/favourites/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  getFavouriteProjects: (params = {}) => {
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
-    }
-    return apiRequest(`/favourites/projects${query.size ? `?${query}` : ''}`);
-  },
   // The detail route requires an ID: /api/idps/<id>.
-  getProject: (id, options = {}) => {
-    if (!/^\d+$/.test(String(id)) || !Number.isSafeInteger(Number(id)) || Number(id) < 1) {
+  getProject: (projectId, options = {}) => {
+    if (!/^\d+$/.test(String(projectId)) || !Number.isSafeInteger(Number(projectId)) || Number(projectId) < 1) {
       return Promise.reject(new Error('A positive project ID is required.'));
     }
-    return apiRequest(`/idps/${encodeURIComponent(id)}`, options);
+    return apiRequest(`/idps/${id(projectId)}`, options);
   },
-};
 
-async function mockRequest(endpoint, options = {}) {
-  console.info(`[MOCK API] ${options.method || 'GET'} ${endpoint}`, options.body || '');
-  await new Promise((resolve) => setTimeout(resolve, 120));
-  return { ok: true, data: options.body ? JSON.parse(options.body) : null };
+  // ----- favourites (US-19 save, US-56 remove, US-44 list, US-08 search) -----
+  saveProject: (projectId) => postJson(`/favourites/projects/${id(projectId)}`),
+  removeSavedProject: (projectId) => remove(`/favourites/projects/${id(projectId)}`),
+  getFavouriteProjects: (params = {}) => apiRequest(`/favourites/projects${queryString(params)}`),
 
-}
+  // ----- designer directory and company page (US-53) -----
+  getDesigners: (params = {}, options = {}) => apiRequest(`/designers${queryString(params)}`, options),
+  getDesigner: (designerId, options = {}) => apiRequest(`/designers/${id(designerId)}`, options),
 
-export const api = {
-  login: (payload) => mockRequest('/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
-  registerCustomer: (payload) => mockRequest('/customers/register', { method: 'POST', body: JSON.stringify(payload) }),
-  getDesigners: () => mockRequest('/designers'),
-  getDesigner: (id) => mockRequest(`/designers/${id}`),
-  submitEnquiry: (payload) => mockRequest('/enquiries', { method: 'POST', body: JSON.stringify(payload) }),
-  submitRequirements: (payload) => mockRequest('/renovation-requirements', { method: 'POST', body: JSON.stringify(payload) }),
-  bookConsultation: (payload) => mockRequest('/consultations', { method: 'POST', body: JSON.stringify(payload) }),
-  makePayment: (payload) => mockRequest('/payments', { method: 'POST', body: JSON.stringify(payload) }),
-  settleOutstandingInvoice: (id) => mockRequest(`/payments/${id}/settle`, { method: 'PATCH' }),
-  submitReview: (payload) => mockRequest('/reviews', { method: 'POST', body: JSON.stringify(payload) }),
-  reportCompany: (payload) => mockRequest('/reports/companies', { method: 'POST', body: JSON.stringify(payload) }),
-  toggleFavouriteDesigner: (id, saved) => mockRequest(`/favourites/designers/${id}`, { method: saved ? 'POST' : 'DELETE' }),
-  toggleFavouriteProject: (id, saved) => mockRequest(`/favourites/projects/${id}`, { method: saved ? 'POST' : 'DELETE' }),
-  saveCompanyProfile: (payload) => mockRequest('/designer/company-profile', { method: 'PUT', body: JSON.stringify(payload) }),
-  createPortfolioProject: (payload) => mockRequest('/designer/portfolio', { method: 'POST', body: JSON.stringify(payload) }),
-  updatePortfolioProject: (id, payload) => mockRequest(`/designer/portfolio/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  deletePortfolioProject: (id) => mockRequest(`/designer/portfolio/${id}`, { method: 'DELETE' }),
-  savePackage: (payload) => mockRequest('/designer/packages', { method: 'POST', body: JSON.stringify(payload) }),
-  updatePackage: (id, payload) => mockRequest(`/designer/packages/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  deletePackage: (id) => mockRequest(`/designer/packages/${id}`, { method: 'DELETE' }),
-  updateEnquiryStatus: (id, status) => mockRequest(`/designer/enquiries/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
-  updateConsultation: (id, payload) => mockRequest(`/designer/consultations/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  updateMilestone: (projectId, payload) => mockRequest(`/designer/projects/${projectId}/milestones`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  respondReview: (id, response) => mockRequest(`/designer/reviews/${id}/response`, { method: 'POST', body: JSON.stringify({ response }) }),
-  updateAccount: (id, payload) => mockRequest(`/admin/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  updateCompanyAccount: (id, payload) => mockRequest(`/admin/companies/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  removeCompanyAccount: (id) => mockRequest(`/admin/companies/${id}`, { method: 'DELETE' }),
-  verifyCompany: (id, status) => mockRequest(`/admin/companies/${id}/verification`, { method: 'PATCH', body: JSON.stringify({ status }) }),
-  resolveReport: (id, payload) => mockRequest(`/admin/reports/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  removeReview: (id) => mockRequest(`/admin/reviews/${id}`, { method: 'DELETE' }),
-  saveCategory: (payload) => mockRequest('/admin/categories', { method: 'POST', body: JSON.stringify(payload) }),
+  // ----- designer: own projects (US-16, 03, 27, 54, 04, 05, 06, 26, 33, 55) -----
+  getMyPortfolio: (params = {}, options = {}) => apiRequest(`/designer/portfolio${queryString(params)}`, options),
+  createPortfolioProject: (payload) => postJson('/designer/portfolio', payload),
+  getMyProject: (projectId, options = {}) => apiRequest(`/designer/portfolio/${id(projectId)}`, options),
+  updateMyProject: (projectId, payload) => putJson(`/designer/portfolio/${id(projectId)}`, payload),
+  deleteMyProject: (projectId) => remove(`/designer/portfolio/${id(projectId)}`),
+  assignTags: (projectId, payload) => putJson(`/designer/portfolio/${id(projectId)}/tags`, payload),
+  markStatus: (projectId, status) => putJson(`/designer/portfolio/${id(projectId)}/status`, { status }),
+  setPublished: (projectId, published) => putJson(`/designer/portfolio/${id(projectId)}/publish`, { published }),
+  uploadPhoto: (projectId, file) => upload(`/designer/portfolio/${id(projectId)}/photos`, { photo: file }),
+  setCoverPhoto: (photoId) => putJson(`/designer/photos/${id(photoId)}/cover`),
+  deletePhoto: (photoId) => remove(`/designer/photos/${id(photoId)}`),
+
+  // ----- designer: analytics (US-57, 29, 46, 48) -----
+  getAnalytics: (options = {}) => apiRequest('/designer/analytics', options),
+
+  // ----- designer: company profile (US-02, 24, 32, 25, 12, 14, 13, 52) -----
+  getMyCompany: (options = {}) => apiRequest('/designer/company', options),
+  createCompany: (payload) => postJson('/designer/company', payload),
+  updateCompany: (payload) => putJson('/designer/company', payload),
+  updateSpecialisations: (payload) => putJson('/designer/company/specialisations', payload),
+  updateCredentials: (payload) => putJson('/designer/company/credentials', payload),
+  updateServices: (payload) => putJson('/designer/company/services', payload),
+  addTeamMember: (payload) => postJson('/designer/company/team', payload),
+  removeTeamMember: (memberId) => remove(`/designer/company/team/${id(memberId)}`),
+  uploadCompanyImage: (kind, file) => upload('/designer/company/images', { kind, image: file }),
 };

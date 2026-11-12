@@ -13,7 +13,7 @@ const emptyFilters = {
   sort: 'newest'
 };
 
-export default function IDPsPage({ openApiProject }) {
+export default function IDPsPage({ openProject }) {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState(emptyFilters);
   const [page, setPage] = useState(1);
@@ -222,8 +222,7 @@ export default function IDPsPage({ openApiProject }) {
             <ProjectCard
               key={project.id}
               project={project}
-              onView={openApiProject}
-              showSave={false}
+              onView={openProject}
             />
           ))}
         </div>

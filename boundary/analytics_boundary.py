@@ -1,9 +1,9 @@
 """Boundary for the designer's interest tracking pages (spec feature 5):
 dashboard (US-57), view counts (US-29), shortlist counts (US-46), ranking (US-09), trends by date
 range (US-35), segment filter (US-36), compare (US-58), CSV export (US-47), notifications (US-48)."""
-from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 
-from boundary.common import current_user_id, role_required
+from boundary.common import api_role_required, current_user_id, role_required
 from boundary.idp_boundary import form_options
 from control.compare_idps_controller import CompareIDPsController
 from control.export_interest_csv_controller import ExportInterestCSVController
@@ -17,7 +17,37 @@ from control.view_interest_by_date_range_controller import ViewInterestByDateRan
 from control.view_shortlist_count_controller import ViewShortlistCountController
 
 bp = Blueprint("analytics", __name__, url_prefix="/analytics")
+api_bp = Blueprint("analytics_api", __name__, url_prefix="/api/designer")
 designer_only = role_required("InteriorDesigner")
+
+
+@api_bp.route("/analytics")
+@api_role_required("InteriorDesigner")
+def api_dashboard():
+    """The React designer dashboard: summary (US-57), views per project (US-29),
+    shortlists per project (US-46) and the latest milestone notifications (US-48).
+    The deeper reports (rank, trend, compare, CSV) stay on the /analytics pages."""
+    designer_id = current_user_id()
+    summary = PortfolioDashboardController().summary(designer_id)
+    top = summary.pop("top_project")
+    summary["top_project"] = {"id": top.id, "title": top.title, "views": top.views} if top else None
+
+    def rows(data, metric):
+        return [{"id": r["idp"].id, "title": r["idp"].title, "published": r["idp"].is_published,
+                 "status": r["idp"].status, metric: r[metric]} for r in data["rows"]]
+
+    views = ViewIDPViewCountController().view_counts(designer_id)
+    shortlists = ViewShortlistCountController().shortlist_counts(designer_id)
+    notifier = NotifyMilestoneController()
+    latest = notifier.list_notifications(designer_id)[:5]
+    return jsonify(data={
+        "summary": summary,
+        "views": {"total": views["total"], "rows": rows(views, "views")},
+        "shortlists": {"total": shortlists["total"], "rows": rows(shortlists, "shortlists")},
+        "notifications": [{"id": n.id, "idp_id": n.idp_id, "message": n.message, "is_read": bool(n.is_read),
+                           "created_at": n.created_at} for n in latest],
+        "unread_notifications": notifier.unread_count(designer_id),
+    })
 
 
 @bp.route("/")

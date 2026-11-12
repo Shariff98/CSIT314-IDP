@@ -39,7 +39,7 @@ export default function ApiFavouriteProjects({ openApiProject }) {
   }, [optionsRetry]);
 
   const clear = () => { setSearch(''); setCategory(''); setRetry(value => value + 1); };
-  return <section aria-label="Saved Flask projects">
+  return <section aria-label="Saved projects">
     <div className="section-heading roomy"><div><h2>Favourite projects</h2>
       <p className="muted">{state.loading ? 'Loading favourite projects...' : state.error ? 'Projects unavailable' : `${state.total} saved project(s)`}</p>
     </div></div>
@@ -70,7 +70,7 @@ export function FavouriteProjectsResults({ state, filtered, openApiProject, onRe
     {filtered && <button className="secondary-button" onClick={onClear}>Clear Filters</button>}
   </div>;
   return <div className="card-grid">{state.items.map(project => <div key={`api-favourite-${project.id}`}>
-    <ProjectCard project={project} onView={openApiProject} showSave={false} />
+    <ProjectCard project={project} onView={openApiProject} />
     <button className="secondary-button" disabled={state.pending.includes(project.id)} onClick={() => onRemove(project.id)}>
       {state.pending.includes(project.id) ? 'Removing...' : 'Remove from Favourites'}
     </button>

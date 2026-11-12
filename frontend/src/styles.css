@@ -23,10 +23,10 @@ main { flex: 1; }
   padding: 14px clamp(18px, 4vw, 56px);
   background: rgba(255,255,255,.96); border-bottom: 1px solid #dfdbd3; backdrop-filter: blur(10px);
 }
-.brand { border: 0; background: transparent; color: #2f4a3a; font-size: 1.25rem; font-weight: 900; padding: 0; }
+.brand { border: 0; background: transparent; color: #2f4a3a; font-size: 1.25rem; font-weight: 900; padding: 0; text-decoration: none; }
 .top-nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; }
-.top-nav button { border: 0; background: transparent; padding: 9px 10px; color: #6a655d; border-radius: 8px; white-space: nowrap; }
-.top-nav button.active { background: #edf2ed; color: #2f4a3a; font-weight: 800; }
+.top-nav a, .top-nav button { border: 0; background: transparent; padding: 9px 10px; color: #6a655d; border-radius: 8px; white-space: nowrap; text-decoration: none; }
+.top-nav a.active, .top-nav button.active { background: #edf2ed; color: #2f4a3a; font-weight: 800; }
 .account-box, .public-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .account-box div { display: grid; text-align: right; line-height: 1.2; }
 .account-box small { color: #7a746c; }
@@ -207,10 +207,10 @@ th { background: #faf9f6; color: #6b665e; font-size: .78rem; text-transform: upp
 .footer { margin-top: auto; padding: 24px clamp(18px,4vw,56px); border-top: 1px solid #dfdbd3; background: #fff; color: #706a62; display: flex; justify-content: space-between; gap: 20px; }
 .footer strong { color: #2f4a3a; }
 
-/* Designers have nine menu items: give the menu its own row before it has to scroll. */
-@media (max-width: 1360px) {
+/* Give the menu its own row before it has to scroll. */
+@media (max-width: 1180px) {
   .topbar { grid-template-columns: auto 1fr; row-gap: 10px; }
-  .account-box { grid-column: 2; grid-row: 1; }
+  .account-box, .public-actions { grid-column: 2; grid-row: 1; }
   .top-nav { grid-column: 1 / -1; grid-row: 2; }
 }
 
@@ -238,4 +238,25 @@ th { background: #faf9f6; color: #6b665e; font-size: .78rem; text-transform: upp
   .thumbnail-grid { grid-template-columns: repeat(2,1fr); }
   .list-card { align-items: flex-start; flex-direction: column; }
   .footer { flex-direction: column; }
+}
+
+/* ---------- real-data pages (designer tools, company page) ---------- */
+.data-table table { min-width: 0; }
+.data-table td.number, .data-table th.number { text-align: right; }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin: 14px 0; }
+.photo-tile { border: 1px solid #e0dcd4; border-radius: 12px; overflow: hidden; background: #fff; display: grid; }
+.photo-tile img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #e8e4dc; }
+.photo-tile .card-actions { margin: 0; padding: 8px; gap: 6px; }
+.photo-tile.cover { border-color: #2f4a3a; box-shadow: 0 0 0 2px #2f4a3a inset; }
+.manage-grid { display: grid; grid-template-columns: 1.3fr .7fr; gap: 20px; align-items: start; }
+.manage-grid > div { display: grid; gap: 20px; }
+.button-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.team-list { display: grid; gap: 8px; margin: 10px 0; padding: 0; list-style: none; }
+.team-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #ece8e1; border-radius: 10px; }
+.company-logo { width: 72px; height: 72px; border-radius: 14px; object-fit: cover; background: #e8e4dc; }
+.notification-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.notification-list li { padding: 10px 12px; border-radius: 10px; background: #faf9f7; border: 1px solid #ece8e1; }
+.notification-list li.unread { border-color: #9bac9e; background: #f2f5f1; font-weight: 700; }
+@media (max-width: 780px) {
+  .manage-grid { grid-template-columns: 1fr; }
 }

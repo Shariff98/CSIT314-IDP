@@ -151,7 +151,7 @@ export default function ChatWidget({ onOpenProject }) {
                   <a
                     key={p.id}
                     className="cw-card"
-                    href={p.url}
+                    href={`#/projects/${p.id}`}
                     onClick={(e) => openCard(e, p.id)}
                   >
                     <img src={p.image} alt="" onError={(e) => (e.currentTarget.style.display = "none")} />
@@ -215,7 +215,7 @@ function ComparisonTable({ rows, onOpen }) {
           <tr>
             <th scope="col"><span className="cw-sr">Fact</span></th>
             {rows.map((r) => (
-              <th key={r.id} scope="col"><a href={r.url} onClick={(e) => onOpen(e, r.id)}>{r.title}</a></th>
+              <th key={r.id} scope="col"><a href={`#/projects/${r.id}`} onClick={(e) => onOpen(e, r.id)}>{r.title}</a></th>
             ))}
           </tr>
         </thead>

@@ -1,16 +1,12 @@
 """Boundary for the designer's own portfolio: MyIDPsPage (US-16, US-03), MyIDPDetailPage (US-27),
 EditIDPPage (US-04, US-26) and the buttons for delete (US-05), status (US-06), publish (US-33)
 and photos (US-55)."""
-from functools import wraps
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, session, url_for
-
-from boundary.common import current_user_id, role_required, uploaded_file
+from boundary.common import (api_error, api_role_required, as_text, current_user_id, json_body, role_required,
+                             uploaded_file)
 from boundary.idp_boundary import form_options
-from boundary.project_serializer import project_json
-from control.logout_controller import LogoutController
-from control.search_user_account_controller import SearchUserAccountController
-from control.search_user_profile_controller import SearchUserProfileController
+from boundary.project_serializer import owner_project_json, project_json
 from control.search_category_controller import SearchCategoryController
 from control.assign_idp_tags_controller import AssignIDPTagsController
 from control.create_idp_controller import CreateIDPController
@@ -29,20 +25,7 @@ designer_only = role_required("InteriorDesigner")
 SEARCH_FIELDS = ("q", "status", "category", "date_from", "date_to")
 
 
-def api_designer_required(view):
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        account_id = current_user_id()
-        account = SearchUserAccountController().view(account_id) if isinstance(account_id, int) else None
-        profiles = SearchUserProfileController().search() if account else []
-        profile = next((profile for profile in profiles if profile.name == account.role), None) if account else None
-        if account is None or account.status != "Active" or profile is None or profile.status != "Active":
-            LogoutController().logout(session)
-            return jsonify(error={"code": "authentication_required", "message": "Please log in with an active account."}), 401
-        if account.role != "InteriorDesigner":
-            return jsonify(error={"code": "forbidden", "message": "An InteriorDesigner account is required."}), 403
-        return view(*args, **kwargs)
-    return wrapped
+api_designer_required = api_role_required("InteriorDesigner")
 
 
 @api_bp.route("/portfolio", methods=["GET"])
@@ -95,6 +78,124 @@ def api_create_portfolio():
     except ValueError as error:
         return jsonify(error={"code": "invalid_request", "message": str(error)}), 400
     return jsonify(data={"project": project_json(project)}), 201
+
+
+# ---------- JSON API for the React "My project" page ----------
+# Each route calls exactly one controller, like the HTML routes below. Someone else's
+# project is reported as 404 (LookupError), bad input as 400 (ValueError).
+
+def _api_call(action, status=200):
+    try:
+        data = action()
+    except LookupError:
+        return api_error("not_found", "Project not found.", 404)
+    except ValueError as error:
+        return api_error("invalid_request", str(error), 400)
+    return jsonify(data=data), status
+
+
+def _my_project(idp_id):
+    idp = ViewMyIDPController().view(current_user_id(), idp_id)
+    if idp is None:
+        raise LookupError("Project not found")
+    return {"project": owner_project_json(idp)}
+
+
+@api_bp.route("/portfolio/<int:idp_id>", methods=["GET"])
+@api_designer_required
+def api_my_project(idp_id):
+    """US-27 View my IDP details (drafts included, not counted as a view)."""
+    return _api_call(lambda: _my_project(idp_id))
+
+
+@api_bp.route("/portfolio/<int:idp_id>", methods=["PUT"])
+@api_designer_required
+def api_update_project(idp_id):
+    """US-04 Update IDP."""
+    def update():
+        p = json_body()
+        for field in ("title", "description", "category", "property_type", "location", "completion_date"):
+            if p.get(field) is not None and not isinstance(p[field], str):
+                raise ValueError(f"{field} must be text")
+        UpdateIDPController().update_idp(
+            current_user_id(), idp_id, p.get("title"), p.get("description"), p.get("category"),
+            as_text(p.get("budget")), p.get("property_type") or "", p.get("location") or "",
+            p.get("completion_date") or None)
+        return _my_project(idp_id)
+    return _api_call(update)
+
+
+@api_bp.route("/portfolio/<int:idp_id>", methods=["DELETE"])
+@api_designer_required
+def api_delete_project(idp_id):
+    """US-05 Delete IDP (its photos, favourites and views go with it)."""
+    def delete():
+        if DeleteIDPController().delete(current_user_id(), idp_id) == "not_found":
+            raise LookupError("Project not found")
+        return {"project_id": idp_id, "deleted": True}
+    return _api_call(delete)
+
+
+@api_bp.route("/portfolio/<int:idp_id>/tags", methods=["PUT"])
+@api_designer_required
+def api_assign_tags(idp_id):
+    """US-26 Assign category and style tags. style_tags may be "a, b" or ["a", "b"]."""
+    def assign():
+        p = json_body()
+        AssignIDPTagsController().assign(current_user_id(), idp_id, p.get("category"), as_text(p.get("style_tags")) or "")
+        return _my_project(idp_id)
+    return _api_call(assign)
+
+
+@api_bp.route("/portfolio/<int:idp_id>/status", methods=["PUT"])
+@api_designer_required
+def api_mark_status(idp_id):
+    """US-06 Mark IDP as Current or Past."""
+    def mark():
+        MarkIDPStatusController().mark(current_user_id(), idp_id, json_body().get("status"))
+        return _my_project(idp_id)
+    return _api_call(mark)
+
+
+@api_bp.route("/portfolio/<int:idp_id>/publish", methods=["PUT"])
+@api_designer_required
+def api_publish(idp_id):
+    """US-33 Publish ({"published": true}) or move back to drafts ({"published": false})."""
+    def publish():
+        wanted = json_body().get("published")
+        if type(wanted) is not bool:
+            raise ValueError("published must be true or false")
+        controller = PublishIDPController()
+        result = (controller.publish if wanted else controller.unpublish)(current_user_id(), idp_id)
+        return {**_my_project(idp_id), "result": result}
+    return _api_call(publish)
+
+
+@api_bp.route("/portfolio/<int:idp_id>/photos", methods=["POST"])
+@api_designer_required
+def api_upload_photo(idp_id):
+    """US-55 Upload one photo (multipart field "photo"). The first photo becomes the cover."""
+    def upload():
+        filename, data = uploaded_file("photo")
+        if not filename:
+            raise ValueError("Choose a photo to upload")
+        UploadIDPPhotoController().upload(current_user_id(), idp_id, filename, data)
+        return _my_project(idp_id)
+    return _api_call(upload, 201)
+
+
+@api_bp.route("/photos/<int:photo_id>/cover", methods=["PUT"])
+@api_designer_required
+def api_set_cover(photo_id):
+    """US-55 Set a photo as the project's cover image."""
+    return _api_call(lambda: _my_project(UploadIDPPhotoController().set_cover(current_user_id(), photo_id).idp_id))
+
+
+@api_bp.route("/photos/<int:photo_id>", methods=["DELETE"])
+@api_designer_required
+def api_delete_photo(photo_id):
+    """US-55 Delete a photo. If it was the cover, the next photo becomes the cover."""
+    return _api_call(lambda: _my_project(UploadIDPPhotoController().delete_photo(current_user_id(), photo_id)))
 
 
 @bp.route("/idps")
