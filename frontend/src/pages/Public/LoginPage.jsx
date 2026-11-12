@@ -44,7 +44,7 @@ export default function LoginPage({ go }) {
       <form className="panel auth-card" onSubmit={handleSubmit} noValidate>
         <span className="eyebrow">Welcome back</span>
         <h1>Log in</h1>
-        <p className="muted">Log in with your Design Match account. Homeowners and designers stay here; user admins and platform managers go on to the administration pages.</p>
+        <p className="muted">Log in with your RenovationLink account. Homeowners and designers stay here; user admins and platform managers go on to the administration pages.</p>
         <label>Email address<input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} placeholder="you@example.com" /><FieldError message={errors.email} /></label>
         <label>Password<input type="password" name="password" autoComplete="current-password" placeholder="Enter password" /><FieldError message={errors.password} /></label>
         {serverError && <div className="alert error-alert">{serverError}</div>}

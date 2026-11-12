@@ -73,7 +73,7 @@ export default function Layout({ page, go, children }) {
       <main>{authMessage && <div className="alert" role="status">{authMessage}</div>}{logoutError && <div className="alert error-alert" role="alert">{logoutError}</div>}{children}</main>
       <footer className="footer">
         <strong>RenovationLink</strong>
-        <span>CSIT314 Design Match</span>
+        <span>CSIT314 RenovationLink</span>
       </footer>
     </div>
   );

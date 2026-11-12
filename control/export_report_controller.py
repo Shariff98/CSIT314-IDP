@@ -25,4 +25,4 @@ class ExportReportController:
             csv.writer(out).writerows(report.to_rows())
             return name, "text/csv", out.getvalue().encode("utf-8")
         lines = [" : ".join(str(cell) for cell in row) for row in report.to_rows()]
-        return name, "application/pdf", simple_pdf(f"Design Match {report.period} Report", lines)
+        return name, "application/pdf", simple_pdf(f"RenovationLink {report.period} Report", lines)
