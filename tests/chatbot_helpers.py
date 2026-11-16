@@ -28,6 +28,21 @@ class FakeLLMGateway:
         return "\n".join(f"#{p['id']} {p['title']} suits you." for p in projects)
 
 
+class FakeRankingGateway(FakeLLMGateway):
+    """A fake LLM that also ranks by description. Set .ranking, or .fail_rank to simulate an outage."""
+
+    def __init__(self, ranking=None, fail_rank=False, **kwargs):
+        super().__init__(**kwargs)
+        self.ranking, self.fail_rank, self.ranked = ranking or {}, fail_rank, []
+
+    def rank_and_explain(self, message, needs, projects):
+        self.calls.append(("rank", [p["id"] for p in projects]))
+        self.ranked = projects
+        if self.fail or self.fail_rank:
+            raise LLMUnavailable("simulated outage")
+        return self.ranking
+
+
 _counter = {"n": 0}
 
 
@@ -41,9 +56,9 @@ def make_designer(name=None):
 
 
 def make_idp(budget, category="Kitchen", styles="Modern", designer=None, published=True, views=0,
-             property_type="HDB", location="Tampines", title=None):
+             property_type="HDB", location="Tampines", title=None, description="test"):
     designer = designer or make_designer()
-    idp = IDP.create(designer.id, title or f"{category} {budget}", "test", category, budget, style_tags=styles,
+    idp = IDP.create(designer.id, title or f"{category} {budget}", description, category, budget, style_tags=styles,
                      property_type=property_type, location=location, published=published)
     if views:
         with get_connection() as conn:

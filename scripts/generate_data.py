@@ -39,9 +39,36 @@ AREAS = ["Central", "North", "South", "East", "West", "North-East"]
 PROPERTY_TYPES = ["HDB", "Condo", "Landed", "Commercial"]
 SERVICES = ["Full renovation", "Space planning", "Carpentry", "Lighting design", "Kitchen design",
             "3D rendering", "Project management", "Furniture sourcing"]
+# Varied, searchable details for project descriptions, so the chatbot can match wishes like "lots of storage".
+GENERAL_FEATURES = ["built-in storage along a full wall", "kid-safe rounded corners",
+                    "pet-friendly scratch-resistant flooring", "warm oak finishes", "plenty of natural light",
+                    "low-maintenance surfaces", "hidden cable management", "a wheelchair-friendly layout",
+                    "smart lighting scenes", "a compact, space-saving layout", "soundproofed walls",
+                    "energy-efficient LED lighting", "indoor plants and greenery", "a calm neutral palette"]
+ROOM_FEATURES = {
+    "Kitchen": ["a large island with seating for four", "a pull-out pantry with lots of storage",
+                "an induction hob that is easy to clean", "soft-close drawers that keep little fingers safe"],
+    "Bathroom": ["a walk-in shower with a non-slip floor", "grab bars for elderly parents",
+                 "a floating vanity with hidden storage"],
+    "Bedroom": ["a full-height wardrobe with lots of storage", "blackout curtains for better sleep",
+                "a reading nook by the window"],
+    "Living Room": ["a TV wall with hidden storage", "a durable sofa area for kids and pets",
+                    "a feature wall in warm wood"],
+    "Office": ["an ergonomic desk setup", "acoustic panels for quiet calls", "built-in shelving for files"],
+}
+# Everyday rooms are what customers ask for most, so the demo has more of them.
+COMMON_ROOM_WEIGHT = 8
 POSITIONS = ["Lead designer", "Junior designer", "Project manager", "3D visualiser", "Site supervisor"]
 COLOURS = [(196, 164, 132), (120, 144, 156), (233, 196, 106), (42, 157, 143), (231, 111, 81), (38, 70, 83),
            (180, 180, 170), (110, 90, 80)]
+
+
+def describe(style, room, rng):
+    """'A modern kitchen renovation with rustic touches, featuring a large island ... and warm oak finishes.'"""
+    first = rng.choice(ROOM_FEATURES.get(room) or GENERAL_FEATURES)
+    second = rng.choice([f for f in GENERAL_FEATURES if f != first])
+    return (f"A {style[0].lower()} {room.lower()} renovation with {style[1].lower()} touches, "
+            f"featuring {first} and {second}.")
 
 
 def name(i):
@@ -132,14 +159,16 @@ def main(size=100, db_path=None, upload_dir=None):
 
     # ---------- projects (IDPs) with a cover photo each ----------
     photos = [png(160, 100, colour) for colour in COLOURS]
+    room_weights = [COMMON_ROOM_WEIGHT if c in ROOM_FEATURES else 1 for c in categories]
+    feature_rng = random.Random(2718)   # separate, so descriptions don't change the rest of the data
     idps = []
     for i in range(size * 3):
         designer = random.choice(designers)
-        style, room = random.sample(STYLES, 2), random.choice(categories)
+        style, room = random.sample(STYLES, 2), random.choices(categories, weights=room_weights)[0]
         created = random_time_between(start, now - timedelta(days=1))
         status = random.choice(["Current", "Past", "Past"])
         idp = IDP.create(designer.id, f"{style[0]} {room} #{i + 1}",
-                         f"A {style[0].lower()} {room.lower()} renovation with {style[1].lower()} touches.",
+                         describe(style, room, feature_rng),
                          room, clustered_budget(), style_tags=", ".join(style),
                          property_type=random.choice(PROPERTY_TYPES), location=random.choice(LOCATIONS),
                          completion_date=(created + timedelta(days=random.randint(20, 90))).date().isoformat()

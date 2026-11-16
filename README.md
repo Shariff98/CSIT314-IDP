@@ -17,7 +17,7 @@ that needs to survive a restart. A successful deployment does not by itself veri
 | Administration | Existing Flask/Jinja pages; React redirects admin and manager accounts there |
 | Chat context | Budget, room, style and exclusions carry across messages; Show more, Cheaper, comparison and Start over |
 | Data | Generated sample records stored in SQLite; the old React mock data and mock-only screens were removed |
-| Validation | 563 Python tests collected; 63 frontend tests; merged main CI passed on 12 November 2026 |
+| Validation | 579 Python tests collected; 64 frontend tests |
 | Coursework | Original user-story mappings and 12 detailed use-case diagrams are retained below; they are not a claim that every workflow has a React screen |
 
 Quick links: [Local setup](#2-run-it) · [Architecture and API](#3a-react-and-flask-one-app-one-database) ·
@@ -62,6 +62,7 @@ Never commit `.env` or paste its secret values into logs, screenshots or PRs.
 | `UPLOAD_DIR` | Optional; defaults to the app's `uploads` directory |
 | `FRONTEND_DIST` | Leave unset for Vite development; use `frontend/dist` to serve a local production build |
 | `LLM_TIMEOUT`, `LLM_TIME_BUDGET` | Optional seconds: default 10 per HTTP attempt and 20 per LLM step including retries |
+| `CHAT_RERANK` | Optional; `1` (default) matches extra needs like "lots of storage" against project descriptions. `0` turns it off without a code change |
 
 `python app.py` loads `.env`; existing process environment variables take precedence. The data
 generator and Gunicorn do not load that file themselves. Render must supply variables through
@@ -365,7 +366,7 @@ If Windows temporary-directory permissions prevent pytest setup, use a new writa
 `python -m pytest -q --basetemp=.pytest-local-tmp`. Pytest may clear this directory; do not point
 it at a folder containing work you want to keep.
 
-The current checkout collects **563 Python tests** and has **63 frontend tests**. Gateway tests
+The current checkout collects **579 Python tests** and has **64 frontend tests**. Gateway tests
 use a fake HTTP transport; passing them does not prove that a deployed key can call Groq.
 On 12 November 2026, local authenticated Groq checks and a two-message conversation succeeded
 with `source: "llm"`, three results, and Modern/Kitchen context retained as the budget changed
@@ -446,9 +447,15 @@ Return to the chatbot and send these messages in order:
 2. `Around $10k.`
 3. `Cheaper.`
 4. `Show more.`
+5. `Something with lots of storage.`
+6. `Tropical kitchen between $8k and $12k.`
 
 Confirm that the room and style carry into later messages, the budget decreases for
 `Cheaper`, and `Show more` returns unseen projects or explains that there are no more.
+After message 5, check the header for "with lots of storage" and look for matching description
+text on cards when available. Message 6 should show only kitchens, or fewer results when the
+selection is limited. The chatbot can suggest options below the range and labels them as such.
+It keeps the upper limit. Choose "Any room" to clear the room filter.
 Check that project images load and that the chat says nothing about answering "without the AI
 service". Choose **Start over** and confirm the preferences clear.
 

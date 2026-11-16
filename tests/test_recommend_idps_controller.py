@@ -44,19 +44,23 @@ def test_strict_max_keeps_every_result_at_or_below_budget(kitchens):
     assert result["projects"] and all(p["budget"] <= 10_000 for p in result["projects"])
 
 
-def test_relaxes_style_then_category_and_says_so(app):
+def test_relaxes_style_and_price_but_never_swaps_the_room(app):
+    # Asking for a kitchen must never show a bedroom or office, even when kitchens are scarce.
     make_idp(10_000, styles="Japandi")
     make_idp(10_500, category="Bedroom", styles="Classic")
     make_idp(11_500, category="Office", styles="Classic")
-    result = recommend({"budget": 10_000, "category": "Kitchen", "styles": ["Japandi"]})
-    assert result["relaxed"] == ["style", "category"]
-    assert len(result["projects"]) == 3
+    make_idp(4_000), make_idp(18_000), make_idp(25_000)
+    result = recommend({"budget": 10_000, "category": "Kitchen", "styles": ["Japandi"]}, fail_reply=True)
+    assert result["relaxed"] == ["style", "budget_window", "nearest_price"]
+    assert {p["category"] for p in result["projects"]} == {"Kitchen"}
+    assert sorted(p["budget"] for p in result["projects"]) == [4_000, 10_000, 18_000]   # closest prices
+    assert "closest-priced kitchen projects" in result["reply"]
 
 
 def test_widens_window_when_still_short(app):
     make_idp(10_000), make_idp(14_000), make_idp(14_800)
     result = recommend({"budget": 10_000, "category": "Kitchen"})
-    assert result["relaxed"] == ["category", "budget_window"]
+    assert result["relaxed"] == ["budget_window"]
     assert max(p["budget"] for p in result["projects"]) == 14_800
 
 

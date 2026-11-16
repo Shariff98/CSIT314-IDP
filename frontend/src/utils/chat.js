@@ -12,7 +12,8 @@ export function describePrefs(prefs) {
   if (!prefs) return '';
   const what = [...(prefs.styles || []), prefs.category, prefs.property_type].filter(Boolean).join(' ');
   const avoid = (prefs.exclude_styles || []).length ? `not ${prefs.exclude_styles.join(', ')}` : '';
-  return [what, describeBudget(prefs), avoid].filter(Boolean).join(' · ');
+  const needs = (prefs.needs || []).length ? `with ${prefs.needs.join(', ')}` : '';
+  return [what, describeBudget(prefs), needs, avoid].filter(Boolean).join(' · ');
 }
 
 const STORAGE_KEY = 'budget-chat';

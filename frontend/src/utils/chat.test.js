@@ -20,6 +20,11 @@ test('describePrefs shows budget ranges and excluded styles', () => {
     'Modern · around $10,000 · not Industrial, Rustic');
 });
 
+test('describePrefs shows extra needs', () => {
+  assert.equal(describePrefs({ budget: 10000, category: 'Kitchen', needs: ['lots of storage', 'kid-friendly'] }),
+    'Kitchen · around $10,000 · with lots of storage, kid-friendly');
+});
+
 function memoryStorage() {
   const data = new Map();
   return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => data.set(k, String(v)) };

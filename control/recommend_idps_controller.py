@@ -1,16 +1,24 @@
 """Control: Get budget-matched recommendations (the chatbot use case).
 
-Four steps per message:
+Four steps per message (at most two LLM calls):
   1. Understand  - LLMGateway.extract_preferences() turns the text into JSON.
   2. Search/rank - this class finds published projects in the budget window and
-                   scores them. Pure Python, no LLM, fully tested.
-  3. Explain     - LLMGateway.write_reply() writes a short friendly reply.
-  4. Check       - any project id in the reply that we did not choose is removed.
+                   scores them. Pure Python, no LLM, fully tested. The room the
+                   customer asked for is never swapped for another room.
+  3. Explain     - LLMGateway.write_reply() writes a short friendly reply. When the
+                   customer has extra needs ("lots of storage"), rank_and_explain()
+                   is called instead: it scores a Python-made shortlist against the
+                   project descriptions and quotes the words that match.
+  4. Check       - any project id in the reply that we did not choose is removed;
+                   an AI reason is kept only if its quote is really in the description.
 
-The LLM never touches the database and never decides which projects are shown,
-so it cannot invent a project or a price. If the LLM fails, budget_parser does
-step 1 and a template does step 3 (alternate flow A3).
+The database and Python determine which projects are eligible and supply every
+card price. The optional description score can change a project score by at most
+AI_WEIGHT. If the LLM fails, budget_parser does step 1 and a template
+does step 3 (alternate flow A3). CHAT_RERANK=0 turns the description ranking off.
 """
+import math
+import os
 import re
 
 from control import budget_parser
@@ -22,6 +30,11 @@ MIN_BUDGET, MAX_BUDGET = 1_000, 1_000_000
 WINDOW_LOW, WINDOW_HIGH, WIDENED_HIGH = 0.90, 1.30, 1.50
 STRICT_WIDENED_LOW = 0.70
 WEIGHTS = {"fit": 0.50, "preference": 0.35, "popularity": 0.15}
+AI_WEIGHT = 0.25           # the most the AI's description score can change a project's score
+NEUTRAL_AI_SCORE = 0.5     # for a shortlisted project the AI did not score
+SHORTLIST_PER_BAND = 4     # projects per price band sent to the AI (at most 12)
+MAX_NEEDS, MAX_NEED_LENGTH = 5, 40
+MAX_REASON_LENGTH, MAX_CHIP_LENGTH = 160, 40
 
 BANDS = [  # (label, from, to) as fractions of the budget
     ("Best fit for your budget", None, 1.05),
@@ -44,10 +57,11 @@ PLACEHOLDERS = {"Kitchen": "/project-kitchen.svg", "Bedroom": "/project-bedroom.
 RANGE_BANDS = ["Lower end of your range", "Middle of your range", "Top of your range"]
 RELAX_NOTES = {
     "style": "I couldn't find enough in that style, so I included other styles.",
-    "category": "I couldn't find enough in that category, so I included other rooms.",
     "budget_window": "I widened the price range a little to find enough options.",
+    "nearest_price": "Only a few {room} projects fit your budget, so I added the closest-priced {room} projects. "
+                     "Say \"any room\" to see other rooms.",
 }
-MEMORY_FIELDS = ("budget", "category", "styles", "exclude_styles", "property_type", "location")
+MEMORY_FIELDS = ("budget", "category", "styles", "exclude_styles", "property_type", "location", "needs")
 SMALL_TALK = {
     "greeting": "Hi! I find interior design projects that fit your budget. Tell me the room, a style you like "
                 "and your budget, for example \"Scandinavian bedroom around $12k\".",
@@ -192,6 +206,70 @@ def money(amount):
     return f"${amount:,.0f}"
 
 
+def relax_notes(relaxed, category=None):
+    room = (category or "matching").lower()
+    if "nearest_price" in relaxed:   # already says the prices were stretched
+        relaxed = [r for r in relaxed if r != "budget_window"]
+    return [RELAX_NOTES[r].format(room=room) for r in relaxed]
+
+
+def rerank_enabled():
+    """CHAT_RERANK=0 (or false/off/no) turns the description ranking off without a redeploy of code."""
+    return os.environ.get("CHAT_RERANK", "1").strip().lower() not in {"0", "false", "off", "no"}
+
+
+def shortlist(scored, budget, strict_max=False, budget_min=None):
+    """The best SHORTLIST_PER_BAND projects of each price band, keeping the score order."""
+    per_band, chosen = {}, []
+    for idp, score in scored:
+        label = band_of(idp.budget, budget, strict_max, budget_min)
+        if per_band.get(label, 0) < SHORTLIST_PER_BAND:
+            per_band[label] = per_band.get(label, 0) + 1
+            chosen.append((idp, score))
+    return chosen
+
+
+def apply_ranking(scored, ranking):
+    """Blends the AI's 0-1 description scores into the Python scores and keeps only checked reasons.
+
+    Never trusts the AI: ids it was not given are ignored, scores are clamped to 0-1, a missing
+    score counts as neutral, and a reason is kept only if its quote really is in the description.
+    Returns ([(idp, score)] sorted best first, {id: {"reason", "quote"}}).
+    """
+    ranking = ranking if isinstance(ranking, dict) else {}
+    scores = ranking.get("scores") if isinstance(ranking.get("scores"), dict) else {}
+    reasons = ranking.get("reasons") if isinstance(ranking.get("reasons"), dict) else {}
+    blended, checked = [], {}
+    for idp, score in scored:
+        raw = scores.get(str(idp.id), scores.get(idp.id))
+        try:
+            ai = float(raw)
+        except (TypeError, ValueError, OverflowError):
+            ai = NEUTRAL_AI_SCORE
+        ai = min(1.0, max(0.0, ai)) if math.isfinite(ai) else NEUTRAL_AI_SCORE
+        blended.append((idp, round((1 - AI_WEIGHT) * score + AI_WEIGHT * ai, 4)))
+        reason = checked_reason(reasons.get(str(idp.id), reasons.get(idp.id)), idp.description)
+        if reason:
+            checked[idp.id] = reason
+    blended.sort(key=lambda pair: (-pair[1], pair[0].budget, pair[0].id))
+    return blended, checked
+
+
+def checked_reason(entry, description):
+    """{"reason", "quote"} if the quote is really in the description and the reason makes no price/id claims."""
+    if not isinstance(entry, dict):
+        return None
+    reason, quote = entry.get("reason"), entry.get("quote")
+    if not isinstance(reason, str) or not isinstance(quote, str):
+        return None
+    reason, quote = " ".join(reason.split()), " ".join(quote.split()).strip(" .,;:\"'")
+    if len(quote) < 4 or quote.lower() not in " ".join((description or "").split()).lower():
+        return None
+    if not reason or "#" in reason or "$" in reason or len(reason) > MAX_REASON_LENGTH:
+        return None
+    return {"reason": reason, "quote": quote}
+
+
 # ---------- the controller ----------
 class RecommendIDPsController:
     def __init__(self, llm_gateway):
@@ -245,26 +323,45 @@ class RecommendIDPsController:
                                 [], [], source, message, prefs, customer_id)
 
         candidates, relaxed, (low, high) = self._find_candidates(prefs)
-        if not candidates and prefs["seen_ids"]:
-            return self._answer("That's everything I have for this search. Try a different budget, room or style.",
-                                [], relaxed, source, message, prefs, customer_id)
+        room = prefs["category"]
         if not candidates:
-            return self._answer(f"I couldn't find any published projects near {money(budget)}. "
-                                "Try a different budget or room.", [], relaxed, source, message, prefs, customer_id)
+            if prefs["seen_ids"]:
+                text = "That's everything I have for this search. Try a different budget, room or style."
+            elif room:
+                text = (f"I don't have any published {room.lower()} projects that match yet. "
+                        "Try a different style, or say \"any room\".")
+            else:
+                text = f"I couldn't find any published projects near {money(budget)}. Try a different budget or room."
+            result = self._answer(text, [], relaxed, source, message, prefs, customer_id)
+            if room:
+                result["suggestions"] = ["Any room"]
+            return result
 
-        picks = pick_three(score_candidates(candidates, prefs, low, high), budget, prefs["strict_max"],
-                           prefs["budget_min"])
+        scored = score_candidates(candidates, prefs, low, high)
+        ai_reasons = None
+        tried_rank = source == "llm" and prefs["needs"] and rerank_enabled() and hasattr(self.llm, "rank_and_explain")
+        if tried_rank:   # replaces write_reply, so still at most two LLM calls
+            short = shortlist(scored, budget, prefs["strict_max"], prefs["budget_min"])
+            try:
+                ranking = self.llm.rank_and_explain(message, prefs["needs"], [self._facts(idp) for idp, _ in short])
+            except LLMUnavailable:
+                ranking = None
+            if ranking is not None:
+                scored, ai_reasons = apply_ranking(short, ranking)
+        picks = pick_three(scored, budget, prefs["strict_max"], prefs["budget_min"])
         projects = [self._card(idp, score, label, prefs) for idp, score, label in picks]
 
-        reply = None
-        if source == "llm":
+        notes, reply = relax_notes(relaxed, room), None
+        if ai_reasons is not None:
+            reply = self.reasoned_reply(budget, projects, notes, prefs["budget_min"], ai_reasons)
+        elif source == "llm" and not tried_rank and "nearest_price" not in relaxed:
             try:
-                reply = self.llm.write_reply(message, projects, [RELAX_NOTES[r] for r in relaxed])
+                reply = self.llm.write_reply(message, projects, notes)
             except LLMUnavailable:
                 reply = None
             reply = self.remove_unknown_ids(reply or "", {p["id"] for p in projects})
         if not reply:
-            reply = self.template_reply(budget, projects, relaxed, prefs["budget_min"])
+            reply = self.template_reply(budget, projects, relaxed, prefs["budget_min"], room)
         return self._answer(reply, projects, relaxed, source, message, prefs, customer_id)
 
     # ---------- compare ----------
@@ -392,34 +489,71 @@ class RecommendIDPsController:
             "property_type": prefs.get("property_type") if isinstance(prefs.get("property_type"), str) else None,
             "location": prefs.get("location") if isinstance(prefs.get("location"), str) else None,
             "strict_max": bool(prefs.get("strict_max")) or budget_min is not None,
+            "needs": RecommendIDPsController._clean_needs(prefs.get("needs")),
             "seen_ids": seen,
         }
 
     @staticmethod
+    def _clean_needs(needs):
+        """At most MAX_NEEDS short, distinct phrases."""
+        cleaned = []
+        for need in needs if isinstance(needs, list) else []:
+            if isinstance(need, str):
+                need = " ".join(need.split())[:MAX_NEED_LENGTH].strip()
+                if need and need.lower() not in (n.lower() for n in cleaned):
+                    cleaned.append(need)
+        return cleaned[:MAX_NEEDS]
+
+    @staticmethod
     def _find_candidates(prefs):
-        """Search, relaxing filters in this order until 3 are found: style, category, price window."""
+        """Search, relaxing in this order until 3 are found: style, then price window.
+
+        The room is what the customer asked for, so it is never swapped for other rooms. If that
+        room still has fewer than 3, the closest-priced projects in the same room are added
+        within any hard ceiling. "Any room" clears the room instead.
+        """
         category, styles, widened, relaxed = prefs["category"], prefs["styles"], False, []
+
+        def allowed(idp):
+            return not set(idp.styles) & set(prefs["exclude_styles"]) and idp.id not in prefs["seen_ids"]
+
         while True:
             low, high = budget_window(prefs["budget"], prefs["strict_max"], widened, prefs["budget_min"])
-            found = [idp for idp in IDP.find_in_budget(low, high, category, styles)
-                     if not set(idp.styles) & set(prefs["exclude_styles"]) and idp.id not in prefs["seen_ids"]]
+            found = [idp for idp in IDP.find_in_budget(low, high, category, styles) if allowed(idp)]
             if len(found) >= 3:
                 return found, relaxed, (low, high)
             if styles:
                 styles = []
                 relaxed.append("style")
-            elif category:
-                category = None
-                relaxed.append("category")
             elif not widened:
                 widened = True
                 relaxed.append("budget_window")
             else:
-                return found, relaxed, (low, high)
+                break
+        if category:
+            target, ids = target_price(prefs), {idp.id for idp in found}
+            ceiling = prefs["budget"] if prefs["strict_max"] else 2**63 - 1
+            others = [idp for idp in IDP.find_in_budget(0, ceiling, category)
+                      if allowed(idp) and idp.id not in ids]
+            others.sort(key=lambda i: (abs(i.budget - target), i.id))
+            extra = others[:3 - len(found)]
+            if extra:
+                found += extra
+                relaxed.append("nearest_price")
+                low, high = min(low, *(i.budget for i in extra)), max(high, *(i.budget for i in extra))
+        return found, relaxed, (low, high)
+
+    @staticmethod
+    def _facts(idp):
+        """What the AI sees of a shortlisted project: no price, so it cannot rank or talk by price."""
+        return {"id": idp.id, "title": idp.title, "category": idp.category, "styles": idp.styles,
+                "description": idp.description or ""}
 
     @staticmethod
     def _card(idp, score, label, prefs):
         """What the React card shows. Built only from database data, never from LLM text."""
+        if prefs["budget_min"] and idp.budget < prefs["budget_min"]:
+            label = "Below your range"
         cover = idp.cover_photo()
         image = f"/uploads/{cover.filename}" if cover else PLACEHOLDERS.get(idp.category, "/project-detail.svg")
         return {"id": idp.id, "title": idp.title, "budget": idp.budget, "category": idp.category,
@@ -435,12 +569,32 @@ class RecommendIDPsController:
         return "\n".join(kept).strip()
 
     @staticmethod
-    def template_reply(budget, projects, relaxed, budget_min=None):
+    def template_reply(budget, projects, relaxed, budget_min=None, category=None):
         span = f"{money(budget_min)} to {money(budget)}" if budget_min else f"a budget of {money(budget)}"
         lines = [f"Here are {len(projects)} projects for {span}:"]
         lines += [f"- #{p['id']} {p['title']}, {money(p['budget'])} ({p['label']})" for p in projects]
-        lines += [RELAX_NOTES[r] for r in relaxed]
+        lines += relax_notes(relaxed, category)
         return "\n".join(lines)
+
+    @staticmethod
+    def reasoned_reply(budget, projects, notes, budget_min, ai_reasons):
+        """One line per card with the AI's checked reason, or the card's own reasons when it had none.
+
+        Built by Python, so every id, title and price comes from the database. Adds the matching
+        words from the description to the card's reason chips.
+        """
+        span = f"{money(budget_min)} to {money(budget)}" if budget_min else f"a budget of {money(budget)}"
+        lines = [f"Here are {len(projects)} projects for {span}:"]
+        for card in projects:
+            checked = ai_reasons.get(card["id"])
+            if checked:
+                why = checked["reason"]
+                if len(checked["quote"]) <= MAX_CHIP_LENGTH:
+                    card["reasons"].append(checked["quote"][0].upper() + checked["quote"][1:])
+            else:
+                why = ", ".join(card["reasons"]) or card["label"]
+            lines.append(f"- #{card['id']} {card['title']}, {money(card['budget'])}: {why}")
+        return "\n".join(lines + notes)
 
     @staticmethod
     def _answer(reply, projects, relaxed, source, message, prefs, customer_id):

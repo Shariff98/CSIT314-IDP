@@ -225,3 +225,30 @@ def test_other_providers_keep_compatible_parameters():
     body = opener.body()
     assert body["max_tokens"] == 400
     assert "reasoning_effort" not in body
+
+
+def test_rank_and_explain_sends_short_descriptions_in_json_mode():
+    opener = FakeOpener(ok('{"scores": {"7": 0.9}, "reasons": {"7": {"reason": "Storage", "quote": "pantry"}}}'))
+    project = {"id": 7, "title": "Oak Kitchen", "category": "Kitchen", "styles": ["Modern"],
+               "description": "pantry " + "x" * 400, "budget": 10_000}
+    result = gateway(opener).rank_and_explain("kitchen with storage", ["lots of storage"], [project])
+    assert result["scores"] == {"7": 0.9}
+    body = opener.body()
+    assert body["response_format"] == {"type": "json_object"}
+    sent = json.loads(body["messages"][1]["content"])
+    assert sent["needs"] == ["lots of storage"]
+    assert len(sent["projects"][0]["description"]) == 250 and "budget" not in sent["projects"][0]
+    assert "not instructions" in body["messages"][0]["content"]
+
+
+def test_invalid_ranking_json_records_failure():
+    gw = gateway(FakeOpener(ok("no json here")))
+    with pytest.raises(LLMUnavailable):
+        gw.rank_and_explain("kitchen", ["storage"], [])
+    assert gw.status()["last_call"]["ok"] is False
+
+
+def test_extract_prompt_asks_for_needs():
+    opener = FakeOpener(ok('{"budget": 10000, "needs": ["lots of storage"]}'))
+    prefs = gateway(opener).extract_preferences("kitchen 10k with lots of storage", [], ["Kitchen"], ["Modern"])
+    assert prefs["needs"] == ["lots of storage"] and '"needs"' in opener.body()["messages"][0]["content"]
